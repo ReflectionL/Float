@@ -17,7 +17,7 @@ enum UpdateError: LocalizedError, Equatable {
     case tooLarge
     case checksumMissing
     case checksumMismatch
-    case unpackFailed
+    case mountFailed
     case appNotFound
     case signatureInvalid
     case identityMismatch
@@ -36,8 +36,8 @@ enum UpdateError: LocalizedError, Equatable {
             "The release has no usable SHA-256 checksum."
         case .checksumMismatch:
             "The downloaded update did not match its SHA-256 checksum and was discarded."
-        case .unpackFailed:
-            "The downloaded archive could not be unpacked."
+        case .mountFailed:
+            "The downloaded disk image could not be opened."
         case .appNotFound:
             "The download does not contain Float."
         case .signatureInvalid:
@@ -93,21 +93,29 @@ struct SystemUpdateInstaller: UpdateInstalling {
             throw UpdateError.checksumMismatch
         }
 
-        let unpacked = workDirectory.appendingPathComponent("unpacked", isDirectory: true)
-        try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
-        guard try await Self.run("/usr/bin/ditto", ["-x", "-k", archiveURL.path, unpacked.path]) == 0 else {
-            throw UpdateError.unpackFailed
-        }
+        let mountPoint = workDirectory.appendingPathComponent("mount", isDirectory: true)
+        try FileManager.default.createDirectory(at: mountPoint, withIntermediateDirectories: true)
+        let attach = try await Self.run(
+            "/usr/bin/hdiutil",
+            ["attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mountPoint.path, archiveURL.path]
+        )
+        guard attach == 0 else { throw UpdateError.mountFailed }
 
         let staged = appURL.deletingLastPathComponent()
             .appendingPathComponent(".Float-update-\(release.version).app", isDirectory: true)
+        let result: Result<Void, Error>
         do {
             try await copyAndVerify(
-                from: unpacked.appendingPathComponent("\(AppIdentity.displayName).app"),
+                from: mountPoint.appendingPathComponent("\(AppIdentity.displayName).app"),
                 to: staged,
                 expecting: release.version
             )
+            result = .success(())
         } catch {
+            result = .failure(error)
+        }
+        _ = try? await Self.run("/usr/bin/hdiutil", ["detach", "-force", mountPoint.path])
+        if case let .failure(error) = result {
             try? FileManager.default.removeItem(at: staged)
             throw error
         }

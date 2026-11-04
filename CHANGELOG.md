@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1
+
+- 发布包改为 DMG（`Float-<版本>.dmg`），打开后把 Float 拖到「Applications」即可安装；Apple 芯片和 Intel 通用。
+- 应用内更新改为下载并校验 DMG。0.6.0 的 zip 版不会提示此更新，请直接安装本版。
+
 ## 0.6.0
 
 - 自动更新：启动时检查 GitHub Release（最多每 6 小时一次），也可从 Float → Check for Updates… 或设置窗口手动检查；发现新版后工具栏出现下载图标，校验 SHA-256、签名和版本后原位替换并重启，工作区先保存。

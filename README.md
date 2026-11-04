@@ -1,4 +1,4 @@
-# Float — 0.6.0
+# Float — 0.6.1
 
 原生 macOS 多线程工作区。0.5.1 更名为 Float，保留原应用标识、数据目录与 JSON 格式，原工作区继续加载。Swift + SwiftUI + SwiftData，macOS 15+，无第三方依赖。
 
@@ -10,7 +10,7 @@ bash scripts/build-app.sh --open
 
 `--universal` 构建 arm64 + x86_64 通用二进制（发版时使用），可与 `--qa`、`--open` 组合。
 
-或在 Finder 中双击 `build/Float.app`。需要 Swift 6+ 的 Apple Command Line Tools 或 Xcode。脚本直接用 `swiftc` 构建并进行本地 ad-hoc 签名。
+或在 Finder 中双击 `build/Float.app`。正式版从 [Releases](https://github.com/ReflectionL/Float/releases) 下载 `Float-<版本>.dmg`，打开后把 Float 拖到「Applications」。需要 Swift 6+ 的 Apple Command Line Tools 或 Xcode。脚本直接用 `swiftc` 构建并进行本地 ad-hoc 签名。
 
 图标原稿为 `Resources/AppIcon.png`：纯黑底、四条不同颜色的细线。构建脚本自动通过 `sips` / `iconutil` 生成完整尺寸的 `Resources/AppIcon.icns` 并加入应用包。
 
@@ -138,7 +138,7 @@ bash scripts/build-app.sh --qa
 
 发布版启动时会安静地检查 GitHub Releases（最多每 6 小时一次，失败不打扰）；也可以从 **Float → Check for Updates…** 或 **Settings → Updates** 手动检查。发现新版本后，工具栏会出现下载图标，点开可查看说明并 **Install and Restart**。
 
-安装过程：下载 `Float-<版本>.zip` 及其 `.sha256`，校验 SHA-256，解压后检查代码签名、Bundle ID 和发布标记都与该版本一致，全部通过才在原位置替换应用并重启。正常退出流程会先保存工作区；数据目录、备份和设置不受影响。替换前的旧版会先移到同目录的临时位置，失败时自动还原。
+安装过程：下载 `Float-<版本>.dmg` 及其 `.sha256`，校验 SHA-256，以只读方式挂载后检查代码签名、Bundle ID 和发布标记都与该版本一致，全部通过才在原位置替换应用并重启。正常退出流程会先保存工作区；数据目录、备份和设置不受影响。替换前的旧版会先移到同目录的临时位置，失败时自动还原。
 
 只有发版工作流构建的应用（Info.plist 带 `FloatReleaseTag`）会自动更新；本地 `build-app.sh` 和 QA 版不检查也不替换自己。应用所在目录必须可写，否则提示手动下载。实现参考 Zulip Mac 的更新器。
 
@@ -150,7 +150,7 @@ bash scripts/build-app.sh --qa
 
 - **CI**（`.github/workflows/ci.yml`）：每个 PR 和 `main` 上的推送都会在 macOS runner 上构建 Float.app 与 QA 版，运行 `scripts/test.sh`、`scripts/test-native.sh` 和 `scripts/test-updates.sh`，按更新器的方式验证一遍发布包，并检查 README 标题、`CHANGELOG.md` 与 `version.env` 的版本一致。
 - **版本号**：唯一来源是 `version.env`（`MARKETING_VERSION` / `BUILD_NUMBER`），构建脚本自动写入 Info.plist。
-- **发新版**：运行 `bash scripts/bump-version.sh 0.5.4`，它会更新版本号、构建号、README 标题，并在 `CHANGELOG.md` 顶部加一节待填写的说明。把这次变更随 PR 合入 `main` 后，`.github/workflows/release.yml` 自动测试、构建 arm64 + x86_64 通用版，打包 `Float-<版本>.zip`（附 SHA-256），以 `v<版本>` 为 tag 发布 GitHub Release，说明取自 CHANGELOG 对应小节。同一版本号只会发布一次；`version.env` 未变时不发版。
+- **发新版**：运行 `bash scripts/bump-version.sh 0.5.4`，它会更新版本号、构建号、README 标题，并在 `CHANGELOG.md` 顶部加一节待填写的说明。把这次变更随 PR 合入 `main` 后，`.github/workflows/release.yml` 自动测试、构建 arm64 + x86_64 通用版，用 `scripts/package-dmg.sh` 打包 `Float-<版本>.dmg`（带「Applications」快捷方式，附 SHA-256），以 `v<版本>` 为 tag 发布 GitHub Release，说明取自 CHANGELOG 对应小节。同一版本号只会发布一次；`version.env` 未变时不发版。
 - 发布包只有 ad-hoc 签名、未经 Apple 公证；首次打开需右键 → 打开，或执行 `xattr -dr com.apple.quarantine /Applications/Float.app`。
 
 ## 实现说明
