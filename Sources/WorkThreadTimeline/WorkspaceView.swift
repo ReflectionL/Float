@@ -16,6 +16,8 @@ enum ThreadEditor: Hashable {
 
 struct WorkspaceView: View {
     @ObservedObject var store: WorkspaceStore
+    @ObservedObject var updates: UpdateController
+    @ViewState private var showingUpdate = false
     @ViewState private var selectedID: UUID?
     @ViewState private var creating = false
     @ViewState private var showingDone = false
@@ -29,15 +31,21 @@ struct WorkspaceView: View {
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
                 if visible.isEmpty {
-                    VStack(spacing: 14) {
-                        Text("A little space to pick things up.").font(.headline)
-                        Text("Create a thread for your next work context.").foregroundStyle(.secondary)
+                    VStack(spacing: AppTheme.Spacing.medium) {
+                        Text("A little space to pick things up.")
+                            .font(AppTheme.Typography.display)
+                            .foregroundStyle(AppTheme.Colors.primaryText)
+                        Text("Create a thread for your next work context.")
+                            .font(AppTheme.Typography.callout)
+                            .foregroundStyle(AppTheme.Colors.secondaryText)
                         Button("New Thread") { creating = true }
+                            .buttonStyle(.borderedProminent)
+                            .padding(.top, AppTheme.Spacing.small)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView(.horizontal) {
-                        HStack(alignment: .top, spacing: 10) {
+                        HStack(alignment: .top, spacing: AppTheme.Metrics.columnSpacing) {
                             ForEach(Array(visible.enumerated()), id: \.element.id) { index, thread in
                                 NativeThreadColumn(
                                     threadID: thread.id,
@@ -52,20 +60,33 @@ struct WorkspaceView: View {
                                     delete: { deleting = thread.id },
                                     submitEvent: { submitEvent(thread.id) }
                                 ))
-                                .frame(width: 340)
+                                .frame(width: AppTheme.Metrics.columnWidth)
                                 .id(thread.id)
                             }
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 16)
+                        .padding(AppTheme.Metrics.workspaceInset)
                     }
                     .scrollContentBackground(.hidden)
                 }
             }
-            .background(Color(nsColor: .windowBackgroundColor))
+            .background(AppTheme.Colors.canvas)
+            .toolbarBackground(AppTheme.Colors.canvas, for: .windowToolbar)
             .background(InitialWorkspaceFocus(configureUndo: store.attachUndoManager).frame(width: 0, height: 0))
-            .frame(minWidth: 760, minHeight: 520)
+            .frame(minWidth: AppTheme.Metrics.minimumWindowWidth, minHeight: AppTheme.Metrics.minimumWindowHeight)
             .toolbar {
+                if let release = updates.availableRelease {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button { showingUpdate = true } label: {
+                            Label("Update to v" + release.version.description, systemImage: "arrow.down.circle.fill")
+                        }
+                        .labelStyle(.iconOnly)
+                        .foregroundStyle(AppTheme.Colors.accentText)
+                        .help("Float v" + release.version.description + " is available")
+                        .popover(isPresented: $showingUpdate) {
+                            UpdatePopover(updates: updates)
+                        }
+                    }
+                }
                 if store.saveError != nil || store.backupError != nil {
                     ToolbarItem(placement: .primaryAction) {
                         Menu {
@@ -83,7 +104,7 @@ struct WorkspaceView: View {
                             Label("Storage needs attention", systemImage: "exclamationmark.triangle")
                         }
                         .labelStyle(.iconOnly)
-                        .foregroundStyle(store.saveError != nil ? Color.red : Color.orange)
+                        .foregroundStyle(store.saveError != nil ? AppTheme.Colors.destructive : AppTheme.Colors.warning)
                         .help("Storage needs attention")
                     }
                 }
@@ -262,18 +283,26 @@ private struct CreateThreadView: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("New Thread").font(.headline)
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.medium) {
+            Text("New Thread")
+                .font(AppTheme.Typography.title)
+                .foregroundStyle(AppTheme.Colors.primaryText)
             TextField("Thread title", text: $title)
+                .textFieldStyle(.roundedBorder)
+                .font(AppTheme.Typography.body)
                 .focused($focused).onSubmit { submit() }
             HStack {
-                Text("Start with one resumable context.").font(.caption).foregroundStyle(.secondary)
+                Text("Start with one resumable context.")
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(AppTheme.Colors.tertiaryText)
                 Spacer()
                 Button("Create") { submit() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
-        .padding(20).frame(width: 380)
+        .padding(AppTheme.Spacing.extraLarge).frame(width: 380)
         .onAppear { focused = true }
     }
 
@@ -288,40 +317,65 @@ private struct DoneThreadsView: View {
     let delete: (UUID) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Done Threads").font(.headline)
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.large) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Done Threads")
+                    .font(AppTheme.Typography.title)
+                    .foregroundStyle(AppTheme.Colors.primaryText)
+                Spacer()
+                Text("\(store.doneThreads.count)")
+                    .font(AppTheme.Typography.captionMedium)
+                    .foregroundStyle(AppTheme.Colors.tertiaryText)
+            }
             if store.doneThreads.isEmpty {
-                Text("Completed threads will appear here.").foregroundStyle(.secondary)
+                Text("Completed threads will appear here.")
+                    .font(AppTheme.Typography.callout)
+                    .foregroundStyle(AppTheme.Colors.secondaryText)
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.large) {
                         ForEach(store.doneThreads) { thread in
-                            VStack(alignment: .leading, spacing: 8) {
+                            VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
                                 HStack {
-                                    Text(thread.title).font(.headline)
+                                    Text(thread.title)
+                                        .font(AppTheme.Typography.bodyMedium)
+                                        .foregroundStyle(AppTheme.Colors.primaryText)
                                     Spacer()
                                     Menu {
                                         Button("Restore as ACTIVE") { restore(thread.id, .active) }
                                         Button("Restore as SLEEPING") { restore(thread.id, .sleeping) }
                                         Divider()
                                         Button("Delete Permanently…", role: .destructive) { delete(thread.id) }
-                                    } label: { Image(systemName: "ellipsis") }
-                                    .menuStyle(.borderlessButton).fixedSize()
+                                    } label: { IconButtonLabel(systemName: "ellipsis") }
+                                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                                 }
                                 if let date = thread.completedAt {
                                     Text(date.formatted(date: .abbreviated, time: .shortened))
-                                        .font(.caption).foregroundStyle(.secondary)
+                                        .font(AppTheme.Typography.caption)
+                                        .foregroundStyle(AppTheme.Colors.tertiaryText)
                                 }
-                                Text(thread.now).font(.subheadline).lineLimit(3)
+                                if !thread.now.isEmpty {
+                                    Text(thread.now)
+                                        .font(AppTheme.Typography.callout)
+                                        .foregroundStyle(AppTheme.Colors.secondaryText)
+                                        .lineLimit(3)
+                                }
                                 if thread.eventDraft != nil {
-                                    Text("Unsubmitted event draft saved").font(.caption).foregroundStyle(.secondary)
+                                    Text("Unsubmitted event draft saved")
+                                        .font(AppTheme.Typography.caption)
+                                        .foregroundStyle(AppTheme.Colors.tertiaryText)
                                 }
                                 ForEach(thread.sortedTimeline.filter(\.pinned)) { event in
-                                    Label(event.text, systemImage: "star.fill")
-                                        .font(.caption).foregroundStyle(.secondary)
+                                    Label {
+                                        Text(event.text).foregroundStyle(AppTheme.Colors.secondaryText)
+                                    } icon: {
+                                        Image(systemName: "star.fill").foregroundStyle(AppTheme.Colors.warning)
+                                    }
+                                    .font(AppTheme.Typography.caption)
                                 }
                                 Button("Restore") { restore(thread.id, .active) }
-                                Divider()
+                                    .controlSize(.small)
+                                Divider().overlay(AppTheme.Colors.stroke)
                             }
                         }
                     }
@@ -329,6 +383,6 @@ private struct DoneThreadsView: View {
                 .frame(maxHeight: 400)
             }
         }
-        .padding(20).frame(width: 400)
+        .padding(AppTheme.Spacing.extraLarge).frame(width: 400)
     }
 }
