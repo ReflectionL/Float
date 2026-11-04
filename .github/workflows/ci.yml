@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcrun swiftc --version
+
+      - name: Build app
+        run: bash scripts/build-app.sh
+
+      - name: Build QA app
+        run: bash scripts/build-app.sh --qa
+
+      - name: Core tests
+        run: bash scripts/test.sh
+
+      - name: Native interaction tests
+        run: bash scripts/test-native.sh
+
+      - name: Check version and changelog
+        run: |
+          source version.env
+          head -1 README.md | grep -qx "# Float — $MARKETING_VERSION" \
+            || { echo "::error::README title does not match version.env ($MARKETING_VERSION)"; exit 1; }
+          notes="$(bash scripts/release-notes.sh "$MARKETING_VERSION")"
+          if [[ -z "$notes" || "$notes" == "- " ]]; then
+            echo "::error::CHANGELOG.md has no notes for $MARKETING_VERSION"; exit 1
+          fi

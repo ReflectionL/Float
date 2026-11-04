@@ -8,6 +8,8 @@
 bash scripts/build-app.sh --open
 ```
 
+`--universal` 构建 arm64 + x86_64 通用二进制（发版时使用），可与 `--qa`、`--open` 组合。
+
 或在 Finder 中双击 `build/Float.app`。需要 Swift 6+ 的 Apple Command Line Tools 或 Xcode。脚本直接用 `swiftc` 构建并进行本地 ad-hoc 签名。
 
 图标原稿为 `Resources/AppIcon.png`：纯黑底、四条不同颜色的细线。构建脚本自动通过 `sips` / `iconutil` 生成完整尺寸的 `Resources/AppIcon.icns` 并加入应用包。
@@ -131,6 +133,13 @@ bash scripts/build-app.sh --qa
 已在 macOS 27 上完成数据与原生交互测试，部署目标为 macOS 15。新版实际窗口已验证跨列快捷键和中文事件草稿输入、重启恢复。最终的真实桌面拖动/边缘滚动及导入导出弹窗验收暂因电脑锁定而待继续；鼠标追踪、坐标和 marked text 已通过进程内原生测试。中文输入法候选窗口的完整交互及 macOS 15 真机兼容性尚未完整实测。
 
 如果旧版应用仍在运行，请先正常退出再打开新版，以载入新的可执行文件；正常退出会保存原工作区。
+
+## CI 与发版
+
+- **CI**（`.github/workflows/ci.yml`）：每个 PR 和 `main` 上的推送都会在 macOS runner 上构建 Float.app 与 QA 版，运行 `scripts/test.sh` 和 `scripts/test-native.sh`，并检查 README 标题、`CHANGELOG.md` 与 `version.env` 的版本一致。
+- **版本号**：唯一来源是 `version.env`（`MARKETING_VERSION` / `BUILD_NUMBER`），构建脚本自动写入 Info.plist。
+- **发新版**：运行 `bash scripts/bump-version.sh 0.5.4`，它会更新版本号、构建号、README 标题，并在 `CHANGELOG.md` 顶部加一节待填写的说明。把这次变更随 PR 合入 `main` 后，`.github/workflows/release.yml` 自动测试、构建 arm64 + x86_64 通用版，打包 `Float-<版本>.zip`（附 SHA-256），以 `v<版本>` 为 tag 发布 GitHub Release，说明取自 CHANGELOG 对应小节。同一版本号只会发布一次；`version.env` 未变时不发版。
+- 发布包只有 ad-hoc 签名、未经 Apple 公证；首次打开需右键 → 打开，或执行 `xattr -dr com.apple.quarantine /Applications/Float.app`。
 
 ## 实现说明
 

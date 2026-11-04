@@ -1,0 +1,77 @@
+name: Release
+
+# Publishes v$MARKETING_VERSION when a version bump lands on main.
+# Pushes that leave version.env unchanged, or whose tag already exists, do nothing.
+on:
+  push:
+    branches: [main]
+    paths: [version.env]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version
+        id: version
+        run: |
+          source version.env
+          tag="v$MARKETING_VERSION"
+          echo "version=$MARKETING_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "Tag $tag already exists; nothing to release."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Test
+        if: steps.version.outputs.skip == 'false'
+        run: |
+          bash scripts/test.sh
+          bash scripts/test-native.sh
+
+      - name: Build universal app
+        if: steps.version.outputs.skip == 'false'
+        run: |
+          bash scripts/build-app.sh --universal
+          lipo -info build/Float.app/Contents/MacOS/WorkThreadTimeline
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" build/Float.app/Contents/Info.plist
+
+      - name: Package
+        if: steps.version.outputs.skip == 'false'
+        run: |
+          zip="Float-${{ steps.version.outputs.version }}.zip"
+          ditto -c -k --sequesterRsrc --keepParent build/Float.app "$zip"
+          shasum -a 256 "$zip" > "$zip.sha256"
+          bash scripts/release-notes.sh "${{ steps.version.outputs.version }}" > notes.md
+          cat >> notes.md <<'NOTES'
+
+          ---
+          下载 `Float-*.zip`，解压后把 Float.app 拖进「应用程序」。应用只做了 ad-hoc 签名、未经 Apple 公证，首次打开请右键 → 打开，或运行 `xattr -dr com.apple.quarantine /Applications/Float.app`。
+          NOTES
+
+      - name: Publish release
+        if: steps.version.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --target "$GITHUB_SHA" \
+            --title "Float ${{ steps.version.outputs.version }}" \
+            --notes-file notes.md \
+            "Float-${{ steps.version.outputs.version }}.zip" \
+            "Float-${{ steps.version.outputs.version }}.zip.sha256"
