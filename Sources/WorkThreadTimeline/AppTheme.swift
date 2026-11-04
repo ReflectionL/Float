@@ -79,6 +79,9 @@ enum AppTheme {
         /// Popovers and floating panels; in dark appearance lighter than the
         /// canvas, because shadows barely show there.
         static let surfaceRaised = Color.dynamic(light: 0xFFFFFF, dark: 0x26262A)
+        /// The selected thread column: a quiet neutral fill, like a selected
+        /// sidebar row in Zulip Mac.
+        static let selectedSurface = Color.dynamic(light: 0xF4F4F6, dark: 0x26262A)
         /// A quiet fill for recessed content.
         static let surfaceSunken = Color.dynamic(light: 0xF5F5F7, dark: 0x151517)
         static let fillHover = Color.dynamic(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.05, darkAlpha: 0.06)

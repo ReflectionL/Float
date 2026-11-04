@@ -61,6 +61,12 @@ struct WorkspaceView: View {
                                     submitEvent: { submitEvent(thread.id) }
                                 ))
                                 .frame(width: AppTheme.Metrics.columnWidth)
+                                .overlay(alignment: .leading) {
+                                    if index > 0 {
+                                        ColumnDivider(hidden: selectedID == thread.id
+                                                      || selectedID == visible[index - 1].id)
+                                    }
+                                }
                                 .id(thread.id)
                             }
                         }
@@ -274,6 +280,24 @@ struct WorkspaceView: View {
         // Let the native editor's final callbacks finish before clearing the
         // draft, so its previous text cannot reappear after submission.
         DispatchQueue.main.async { store.submitEventDraft(id) }
+    }
+}
+
+/// A hairline centred in the gap before a column. Hidden next to the selected
+/// column, whose panel already sets it apart.
+private struct ColumnDivider: View {
+    let hidden: Bool
+
+    var body: some View {
+        Rectangle()
+            .fill(AppTheme.Colors.stroke)
+            .frame(width: AppTheme.Metrics.hairline)
+            .padding(.vertical, AppTheme.Spacing.medium)
+            .offset(x: -(AppTheme.Metrics.columnSpacing + AppTheme.Metrics.hairline) / 2)
+            .opacity(hidden ? 0 : 1)
+            .animation(AppTheme.Motion.fast, value: hidden)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 

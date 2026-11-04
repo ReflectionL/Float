@@ -37,7 +37,13 @@ struct ThreadColumnView: View {
             }
             .scrollContentBackground(.hidden)
         }
-        .background(AppTheme.Colors.canvas)
+        // The selected thread sits on a quiet neutral panel; the others stay on
+        // the canvas and are separated by hairlines drawn by the workspace.
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.large, style: .continuous)
+                .fill(selected ? AppTheme.Colors.selectedSurface : AppTheme.Colors.canvas)
+        )
+        .animation(AppTheme.Motion.fast, value: selected)
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded { select() })
         .onAppear {
@@ -132,19 +138,10 @@ struct ThreadColumnView: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.extraSmall) {
             HStack(spacing: AppTheme.Spacing.extraSmall) {
                 SectionLabel(text: label, emphasized: prominent)
+                    .frame(minHeight: AppTheme.ControlHeight.compact)
                     .contentShape(Rectangle())
                     .onTapGesture { editor.wrappedValue = field }
                 Spacer()
-                if prominent && thread.nowDraft != nil {
-                    Button("Update") {
-                        guard EditingBoundary.endEditing() else { return }
-                        store.commitNow(thread.id); editor.wrappedValue = nil
-                    }
-                        .buttonStyle(.borderless)
-                        .font(AppTheme.Typography.captionMedium)
-                        .foregroundStyle(AppTheme.Colors.accentText)
-                        .help("Commit NOW and keep the previous value in the timeline (⌘Return)")
-                }
                 if prominent && !(thread.nowDraft ?? thread.now).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Button {
                         guard !EditingBoundary.isComposing, EditingBoundary.endEditing() else { return }
