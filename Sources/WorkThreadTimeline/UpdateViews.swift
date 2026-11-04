@@ -7,7 +7,7 @@ struct UpdateSettingsSection: View {
     var body: some View {
         Section("Updates") {
             LabeledContent("Installed version") {
-                Text(updates.installedVersion.map { "v\($0)" } ?? "Development build")
+                Text(verbatim: updates.installedVersion.map { "v" + $0.description } ?? "Development build")
             }
             UpdateStatusRows(updates: updates)
             HStack {

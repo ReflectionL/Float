@@ -77,11 +77,11 @@ struct WorkspaceView: View {
                 if let release = updates.availableRelease {
                     ToolbarItem(placement: .primaryAction) {
                         Button { showingUpdate = true } label: {
-                            Label("Update to v\(release.version)", systemImage: "arrow.down.circle.fill")
+                            Label("Update to v" + release.version.description, systemImage: "arrow.down.circle.fill")
                         }
                         .labelStyle(.iconOnly)
                         .foregroundStyle(AppTheme.Colors.accentText)
-                        .help("Float v\(release.version) is available")
+                        .help("Float v" + release.version.description + " is available")
                         .popover(isPresented: $showingUpdate) {
                             UpdatePopover(updates: updates)
                         }
