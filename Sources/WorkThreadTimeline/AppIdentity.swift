@@ -17,6 +17,6 @@ enum AppIdentity {
 
     /// The release asset name, as the release workflow writes it.
     static func archiveName(for version: ReleaseVersion) -> String {
-        "Float-\(version).zip"
+        "Float-\(version).dmg"
     }
 }

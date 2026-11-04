@@ -57,15 +57,12 @@ jobs:
       - name: Package
         if: steps.version.outputs.skip == 'false'
         run: |
-          # The in-app updater expects exactly this asset name and checksum format.
-          zip="Float-${{ steps.version.outputs.version }}.zip"
-          ditto -c -k --sequesterRsrc --keepParent build/Float.app "$zip"
-          shasum -a 256 "$zip" > "$zip.sha256"
+          bash scripts/package-dmg.sh
           bash scripts/release-notes.sh "${{ steps.version.outputs.version }}" > notes.md
           cat >> notes.md <<'NOTES'
 
           ---
-          已安装 Float 的用户会在应用内收到更新提示（工具栏下载图标或 Float → Check for Updates…）。首次安装：下载 `Float-*.zip`，解压后把 Float.app 拖进「应用程序」。应用只做了 ad-hoc 签名、未经 Apple 公证，首次打开请右键 → 打开，或运行 `xattr -dr com.apple.quarantine /Applications/Float.app`。
+          已安装 Float 的用户会在应用内收到更新提示（工具栏下载图标或 Float → Check for Updates…）。首次安装：打开 `Float-*.dmg`，把 Float 拖到「Applications」。Apple 芯片和 Intel 通用。应用只做了 ad-hoc 签名、未经 Apple 公证，首次打开请右键 → 打开；可用附带的 SHA-256 文件校验下载。
           NOTES
 
       - name: Publish release
@@ -77,5 +74,5 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "Float ${{ steps.version.outputs.version }}" \
             --notes-file notes.md \
-            "Float-${{ steps.version.outputs.version }}.zip" \
-            "Float-${{ steps.version.outputs.version }}.zip.sha256"
+            "dist/Float-${{ steps.version.outputs.version }}.dmg" \
+            "dist/Float-${{ steps.version.outputs.version }}.dmg.sha256"

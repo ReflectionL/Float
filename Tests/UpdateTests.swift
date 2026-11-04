@@ -32,7 +32,7 @@ struct UpdateTests {
     }
 
     static func releaseJSON(_ tag: String, draft: Bool = false, host: String = "github.com", checksum: Bool = true) -> String {
-        let name = "Float-\(tag.dropFirst()).zip"
+        let name = "Float-\(tag.dropFirst()).dmg"
         var assets = #"{"name":"\#(name)","browser_download_url":"https://\#(host)/ReflectionL/Float/releases/download/\#(tag)/\#(name)"}"#
         if checksum {
             assets += #",{"name":"\#(name).sha256","browser_download_url":"https://github.com/ReflectionL/Float/releases/download/\#(tag)/\#(name).sha256"}"#
@@ -44,7 +44,7 @@ struct UpdateTests {
         let list = Data("[\([releaseJSON("v0.5.4"), releaseJSON("v0.5.10"), releaseJSON("v0.5.9")].joined(separator: ","))]".utf8)
         let newest = try ReleaseFeed.newest(from: list)
         expect(newest?.tag == "v0.5.10", "newest regardless of order")
-        expect(newest?.archiveName == "Float-0.5.10.zip", "archive name")
+        expect(newest?.archiveName == "Float-0.5.10.dmg", "archive name")
         expect(newest?.notes == "notes", "notes")
 
         let unusable = Data("[\([releaseJSON("v0.9.0", draft: true), releaseJSON("v0.8.0", checksum: false), releaseJSON("v0.7.0", host: "evil.example.com"), releaseJSON("v0.5.4")].joined(separator: ","))]".utf8)
@@ -61,8 +61,8 @@ struct UpdateTests {
         let atom = Data(#"<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><link rel="alternate" href="https://github.com/ReflectionL/Float/releases"/>\#(entry("v0.5.4"))\#(entry("v0.6.0"))\#(entry("nightly"))</feed>"#.utf8)
         let fromAtom = try ReleaseFeed.newest(fromAtom: atom, repository: "ReflectionL/Float")
         expect(fromAtom?.tag == "v0.6.0", "atom newest")
-        expect(fromAtom?.archiveURL.absoluteString == "https://github.com/ReflectionL/Float/releases/download/v0.6.0/Float-0.6.0.zip", "atom archive URL")
-        expect(fromAtom?.checksumURL.absoluteString == "https://github.com/ReflectionL/Float/releases/download/v0.6.0/Float-0.6.0.zip.sha256", "atom checksum URL")
+        expect(fromAtom?.archiveURL.absoluteString == "https://github.com/ReflectionL/Float/releases/download/v0.6.0/Float-0.6.0.dmg", "atom archive URL")
+        expect(fromAtom?.checksumURL.absoluteString == "https://github.com/ReflectionL/Float/releases/download/v0.6.0/Float-0.6.0.dmg.sha256", "atom checksum URL")
 
         expect(ReleaseFeed.isTrustedDownload(URL(string: "https://objects.githubusercontent.com/x")!), "github cdn")
         expect(!ReleaseFeed.isTrustedDownload(URL(string: "http://github.com/a")!), "http")
@@ -71,10 +71,10 @@ struct UpdateTests {
 
     static func checksums() {
         let digest = String(repeating: "ab", count: 32)
-        expect(ReleaseFeed.checksum(from: "\(digest)  Float-0.5.4.zip\n", expectedName: "Float-0.5.4.zip") == digest, "shasum format")
-        expect(ReleaseFeed.checksum(from: "\(digest.uppercased())  Float-0.5.4.zip", expectedName: "Float-0.5.4.zip") == digest, "uppercase")
-        expect(ReleaseFeed.checksum(from: "\(digest)  Other.zip", expectedName: "Float-0.5.4.zip") == nil, "other file")
-        expect(ReleaseFeed.checksum(from: "abc  Float-0.5.4.zip", expectedName: "Float-0.5.4.zip") == nil, "short digest")
+        expect(ReleaseFeed.checksum(from: "\(digest)  Float-0.5.4.dmg\n", expectedName: "Float-0.5.4.dmg") == digest, "shasum format")
+        expect(ReleaseFeed.checksum(from: "\(digest.uppercased())  Float-0.5.4.dmg", expectedName: "Float-0.5.4.dmg") == digest, "uppercase")
+        expect(ReleaseFeed.checksum(from: "\(digest)  Other.dmg", expectedName: "Float-0.5.4.dmg") == nil, "other file")
+        expect(ReleaseFeed.checksum(from: "abc  Float-0.5.4.dmg", expectedName: "Float-0.5.4.dmg") == nil, "short digest")
     }
 
     struct FakeFetcher: ReleaseFetching {
