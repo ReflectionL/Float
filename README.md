@@ -30,7 +30,7 @@ bash scripts/build-app.sh --open
 
 本轮构建与原生交互测试通过，包含手柄图形隐藏时的拖动/取消、边缘滚动、输入法 marked text 及换行。2026-10-09 已在 macOS 27 浅色实际窗口检查统一背景、标题对齐、文字层级、默认隐藏的普通星号、里程碑常显、手柄获得焦点时显示，以及 Timeline 加号展开、Return 换行、⌘Return 提交收起和 Note 提交后焦点不跳转。正式版重启后正常加载 6 个可见线程和 4 个已完成线程。工具的指针操作未可靠触发悬停回调，纯悬停显示仍待人工复核；旧版 macOS 尚未实机复核。数据格式、存储目录和编辑快捷键沿用原版。
 
-- 选中线程的 status 图标显示蓝色，其余线程图标和状态文字保持中性色；顶部不再显示选中横线或胶囊条。
+- 选中线程的 status 图标显示靛蓝强调色，其余线程图标和状态文字保持中性色；顶部不再显示选中横线或胶囊条。
 - 点击输入框时保持当前滚动位置，不再将 NOW / NOTE / Timeline 强制对齐到顶部，也不因切换选中列自动横移。仅显式快捷键导航、新建或恢复线程时将目标列带入视野。
 - 极简界面：NOW / NOTE / TIMELINE 无默认提示文字；移除底部状态栏和快捷键提示。顶部只保留窗口标题、数据菜单、已完成和新建图标，悬停可查看用途。线程和工作区使用同一系统背景，自动跟随系统外观；启动时不自动进入标题编辑。
 - 首次启动提供三个示例，以后加载本地数据，不重复添加示例。
@@ -134,9 +134,21 @@ bash scripts/build-app.sh --qa
 
 如果旧版应用仍在运行，请先正常退出再打开新版，以载入新的可执行文件；正常退出会保存原工作区。
 
+## 自动更新
+
+发布版启动时会安静地检查 GitHub Releases（最多每 6 小时一次，失败不打扰）；也可以从 **Float → Check for Updates…** 或 **Settings → Updates** 手动检查。发现新版本后，工具栏会出现下载图标，点开可查看说明并 **Install and Restart**。
+
+安装过程：下载 `Float-<版本>.zip` 及其 `.sha256`，校验 SHA-256，解压后检查代码签名、Bundle ID 和发布标记都与该版本一致，全部通过才在原位置替换应用并重启。正常退出流程会先保存工作区；数据目录、备份和设置不受影响。替换前的旧版会先移到同目录的临时位置，失败时自动还原。
+
+只有发版工作流构建的应用（Info.plist 带 `FloatReleaseTag`）会自动更新；本地 `build-app.sh` 和 QA 版不检查也不替换自己。应用所在目录必须可写，否则提示手动下载。实现参考 Zulip Mac 的更新器。
+
+## 设计语言
+
+界面采用与 Zulip Mac 相同的设计 token（`AppTheme.swift`）：纯白 / 深灰画布，中性色的主、次、三级文字，唯一的靛蓝强调色，四档圆角，三种字重和一组不回弹的动效曲线。区域标题（NOW / NOTE / TIMELINE）使用大写小号字加字距；图标按钮统一为 24 pt 的悬停填充按钮；选中线程的状态图标、拖动插入线、提示按钮使用靛蓝强调色；里程碑星标使用暖色。布局尺寸（列宽 340 pt、间距等）与 0.5.3 保持一致。
+
 ## CI 与发版
 
-- **CI**（`.github/workflows/ci.yml`）：每个 PR 和 `main` 上的推送都会在 macOS runner 上构建 Float.app 与 QA 版，运行 `scripts/test.sh` 和 `scripts/test-native.sh`，并检查 README 标题、`CHANGELOG.md` 与 `version.env` 的版本一致。
+- **CI**（`.github/workflows/ci.yml`）：每个 PR 和 `main` 上的推送都会在 macOS runner 上构建 Float.app 与 QA 版，运行 `scripts/test.sh`、`scripts/test-native.sh` 和 `scripts/test-updates.sh`，按更新器的方式验证一遍发布包，并检查 README 标题、`CHANGELOG.md` 与 `version.env` 的版本一致。
 - **版本号**：唯一来源是 `version.env`（`MARKETING_VERSION` / `BUILD_NUMBER`），构建脚本自动写入 Info.plist。
 - **发新版**：运行 `bash scripts/bump-version.sh 0.5.4`，它会更新版本号、构建号、README 标题，并在 `CHANGELOG.md` 顶部加一节待填写的说明。把这次变更随 PR 合入 `main` 后，`.github/workflows/release.yml` 自动测试、构建 arm64 + x86_64 通用版，打包 `Float-<版本>.zip`（附 SHA-256），以 `v<版本>` 为 tag 发布 GitHub Release，说明取自 CHANGELOG 对应小节。同一版本号只会发布一次；`version.env` 未变时不发版。
 - 发布包只有 ad-hoc 签名、未经 Apple 公证；首次打开需右键 → 打开，或执行 `xattr -dr com.apple.quarantine /Applications/Float.app`。

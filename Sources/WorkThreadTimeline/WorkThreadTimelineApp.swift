@@ -44,35 +44,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct WorkThreadTimelineApp: App {
     @StateObject private var session = AppSession()
+    @StateObject private var updates = UpdateController()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
         Window("Float", id: "workspace") {
             Group {
                 if let store = session.store {
-                    WorkspaceView(store: store)
+                    WorkspaceView(store: store, updates: updates)
                         .onAppear { delegate.store = store }
                 } else {
-                    VStack(spacing: 18) {
-                        Image(systemName: "externaldrive.badge.exclamationmark").font(.largeTitle)
-                        Text("Couldn’t open your workspace").font(.headline)
+                    VStack(spacing: AppTheme.Spacing.medium) {
+                        Image(systemName: "externaldrive.badge.exclamationmark")
+                            .font(.system(size: 32, weight: .regular))
+                            .foregroundStyle(AppTheme.Colors.warning)
+                        Text("Couldn’t open your workspace")
+                            .font(AppTheme.Typography.display)
+                            .foregroundStyle(AppTheme.Colors.primaryText)
                         Text(session.error ?? "Unknown storage error")
+                            .font(AppTheme.Typography.callout)
+                            .foregroundStyle(AppTheme.Colors.secondaryText)
+                            .multilineTextAlignment(.center)
                             .textSelection(.enabled)
-                        Text("Your existing data has not been replaced.").foregroundStyle(.secondary)
-                        Button("Retry") { session.load() }
-                        Button("Open Data Folder") {
-                            NSWorkspace.shared.open(WorkspacePersistence.defaultURL.deletingLastPathComponent())
+                        Text("Your existing data has not been replaced.")
+                            .font(AppTheme.Typography.callout)
+                            .foregroundStyle(AppTheme.Colors.tertiaryText)
+                        HStack(spacing: AppTheme.Spacing.small) {
+                            Button("Open Data Folder") {
+                                NSWorkspace.shared.open(WorkspacePersistence.defaultURL.deletingLastPathComponent())
+                            }
+                            Button("Retry") { session.load() }
+                                .buttonStyle(.borderedProminent)
                         }
+                        .padding(.top, AppTheme.Spacing.small)
                     }
-                    .padding(40)
-                    .frame(minWidth: 760, minHeight: 520)
+                    .padding(AppTheme.Spacing.section)
+                    .frame(maxWidth: 520)
+                    .frame(
+                        minWidth: AppTheme.Metrics.minimumWindowWidth,
+                        maxWidth: .infinity,
+                        minHeight: AppTheme.Metrics.minimumWindowHeight,
+                        maxHeight: .infinity
+                    )
+                    .background(AppTheme.Colors.canvas)
                 }
             }
+            // System controls (prominent buttons, focus rings) use the app's
+            // accent rather than the system one.
+            .tint(AppTheme.Colors.accent)
+            .task { await updates.checkAutomatically() }
         }
         .defaultSize(width: 1160, height: 740)
         .windowToolbarStyle(.unifiedCompact)
         .windowResizability(.contentMinSize)
-        .commands { WorkspaceCommands() }
+        .commands {
+            UpdateCommands(updates: updates)
+            WorkspaceCommands()
+        }
+
+        Settings {
+            SettingsView(updates: updates)
+        }
     }
 }
 

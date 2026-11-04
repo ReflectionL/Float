@@ -5,6 +5,8 @@ set -euo pipefail
 #   --qa         build "Float QA.app" with an isolated store
 #   --open       open the app after building
 #   --universal  build an arm64 + x86_64 binary (used for releases)
+# FLOAT_RELEASE_TAG=v1.2.3 marks the build as that release, which turns on the
+# in-app updater. Only the release workflow sets it.
 cd "$(dirname "$0")/.."
 # shellcheck source=../version.env
 source version.env
@@ -70,6 +72,13 @@ PLIST
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $APP_ID" "$APP_DIR/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" "$APP_DIR/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" "$APP_DIR/Contents/Info.plist"
+if [[ -n "${FLOAT_RELEASE_TAG:-}" && "$QA" == 0 ]]; then
+    if [[ "${FLOAT_RELEASE_TAG#v}" != "$MARKETING_VERSION" ]]; then
+        echo "FLOAT_RELEASE_TAG ($FLOAT_RELEASE_TAG) does not match version.env ($MARKETING_VERSION)" >&2
+        exit 1
+    fi
+    /usr/libexec/PlistBuddy -c "Add :FloatReleaseTag string ${FLOAT_RELEASE_TAG#v}" "$APP_DIR/Contents/Info.plist"
+fi
 if [[ "$QA" == 1 ]]; then
     /usr/libexec/PlistBuddy -c "Add :XlineQAStorePath string $PWD/.build/ui-qa/workspace.store" "$APP_DIR/Contents/Info.plist"
 fi

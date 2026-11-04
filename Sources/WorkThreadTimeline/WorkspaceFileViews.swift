@@ -51,29 +51,53 @@ struct ImportPreview: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Import Workspace").font(.headline)
-            Text(candidate.filename).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.large) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.extraSmall) {
+                Text("Import Workspace")
+                    .font(AppTheme.Typography.title)
+                    .foregroundStyle(AppTheme.Colors.primaryText)
+                Text(candidate.filename)
+                    .font(AppTheme.Typography.callout)
+                    .foregroundStyle(AppTheme.Colors.secondaryText)
+                    .lineLimit(2)
+            }
             Text("\(candidate.archive.threads.count) threads · \(candidate.archive.threads.reduce(0) { $0 + $1.timeline.count }) events")
+                .font(AppTheme.Typography.captionMedium)
+                .foregroundStyle(AppTheme.Colors.tertiaryText)
             ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
                     ForEach(candidate.archive.orderedThreads) { thread in
-                        HStack { Text(thread.title.isEmpty ? "Untitled Thread" : thread.title); Spacer(); Text(thread.status.rawValue).foregroundStyle(.secondary) }
-                            .font(.caption)
+                        HStack {
+                            Text(thread.title.isEmpty ? "Untitled Thread" : thread.title)
+                                .foregroundStyle(AppTheme.Colors.primaryText)
+                            Spacer()
+                            Text(thread.status.rawValue)
+                                .tracking(AppTheme.Typography.labelTracking)
+                                .foregroundStyle(AppTheme.Colors.tertiaryText)
+                        }
+                        .font(AppTheme.Typography.callout)
                     }
                 }
-            }.frame(maxHeight: 130)
+                .padding(AppTheme.Spacing.medium)
+            }
+            .frame(maxHeight: 140)
+            .background(AppTheme.Colors.surfaceSunken, in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous))
             Picker("Import mode", selection: $mode) {
                 ForEach(WorkspaceStore.ImportMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }.pickerStyle(.segmented)
             if mode == .addMissing {
                 Text("Add \(missingCount) new threads. Keep your current version of the \(candidate.archive.threads.count - missingCount) existing threads.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(AppTheme.Typography.callout).foregroundStyle(AppTheme.Colors.secondaryText)
             } else {
                 Text("Replace all \(store.threads.count) current threads with this file. A recovery backup will be saved first.")
-                    .font(.subheadline).foregroundStyle(.primary)
+                    .font(AppTheme.Typography.callout).foregroundStyle(AppTheme.Colors.primaryText)
             }
-            if let error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+            if let error {
+                Text(error)
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(AppTheme.Colors.destructive)
+                    .textSelection(.enabled)
+            }
             HStack {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
@@ -81,9 +105,11 @@ struct ImportPreview: View {
                     do { try store.applyImport(candidate.archive, mode: mode); completed() }
                     catch { self.error = error.localizedDescription }
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(mode == .replace ? AppTheme.Colors.destructive : AppTheme.Colors.accent)
                 .disabled(mode == .addMissing && missingCount == 0)
             }
         }
-        .padding(24).frame(width: 480)
+        .padding(AppTheme.Spacing.extraLarge).frame(width: 480)
     }
 }

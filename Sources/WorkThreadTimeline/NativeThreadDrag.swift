@@ -128,10 +128,16 @@ final class ThreadDropHostingView<Content: View>: NSHostingView<Content>, Thread
         wantsLayer = true
         if insertionLine == nil {
             let line = CALayer()
-            line.backgroundColor = NSColor.controlAccentColor.cgColor
+            line.cornerRadius = 1.5
             layer?.addSublayer(line)
             insertionLine = line
         }
+        // The design system's indigo accent (AppTheme.Colors.accent), resolved
+        // for the current appearance because a layer color does not adapt.
+        let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        insertionLine?.backgroundColor = (isDark
+            ? NSColor(srgbRed: 0x5F / 255, green: 0x6B / 255, blue: 0xE8 / 255, alpha: 1)
+            : NSColor(srgbRed: 0x45 / 255, green: 0x53 / 255, blue: 0xD0 / 255, alpha: 1)).cgColor
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         insertionLine?.isHidden = false
