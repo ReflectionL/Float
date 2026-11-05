@@ -16,6 +16,19 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Detect release pull request
+        # Only a pull request that changes version.env publishes a release,
+        # so only that one pays for the universal build and DMG check.
+        id: release
+        run: |
+          if [[ -n "${{ github.base_ref }}" ]] && ! git diff --quiet "origin/${{ github.base_ref }}...HEAD" -- version.env; then
+            echo "is=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Toolchain
         run: |
@@ -38,6 +51,7 @@ jobs:
         run: bash scripts/test-updates.sh
 
       - name: Release build smoke test
+        if: steps.release.outputs.is == 'true'
         # Builds and packages what the release workflow ships, then checks the
         # DMG the way the in-app updater will: checksum, mount, signature, tags.
         run: |
@@ -56,14 +70,6 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :FloatReleaseTag' "$app/Contents/Info.plist")" = "$MARKETING_VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "local.xline.WorkThreadTimeline"
           hdiutil detach "$mount"
-
-      - name: Upload test DMG
-        # Lets a pull request be tried without publishing a release.
-        uses: actions/upload-artifact@v4
-        with:
-          name: Float-dmg
-          path: dist/*.dmg
-          retention-days: 14
 
       - name: Check version and changelog
         run: |
