@@ -109,10 +109,10 @@ struct ThreadColumnView: View {
                             .foregroundStyle(AppTheme.Colors.secondaryText)
                     } icon: {
                         Image(systemName: "circle.fill")
-                            .font(.system(size: 6))
                             .renderingMode(.original)
                             .symbolRenderingMode(.palette)
                             .foregroundStyle(thread.status.tint)
+                            .font(.system(size: 6))
                     }
                     .font(AppTheme.Typography.caption)
                 }
