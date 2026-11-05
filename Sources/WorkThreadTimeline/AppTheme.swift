@@ -49,6 +49,8 @@ enum AppTheme {
         static let display = Font.system(size: 20, weight: .semibold)
         /// NOW: the one thing a thread is doing.
         static let now = Font.system(size: 18, weight: .medium)
+        /// One of several parallel NOW items.
+        static let nowItem = Font.system(size: 15, weight: .medium)
         /// Thread titles.
         static let headline = Font.system(size: 17, weight: .semibold)
         /// Popover and sheet titles.

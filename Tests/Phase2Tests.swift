@@ -17,6 +17,7 @@ struct Phase2Tests {
         case "safety": try safetyTests(url)
         case "migration": try migrationTests(url)
         case "undo": try undoTests(url)
+        case "parallel": try parallelNowTests(url)
         default: fatalError("Unknown test mode")
         }
         print("PASS: \(args[1])")
@@ -104,6 +105,123 @@ struct Phase2Tests {
         precondition(store.thread(id)!.now == "Updated Now")
         automatic.redo()
         precondition(store.thread(id)!.now.isEmpty)
+    }
+
+    @MainActor
+    static func parallelNowTests(_ url: URL) throws {
+        let store = try WorkspaceStore(url: url, seedExamples: false)
+        let manager = UndoManager()
+        manager.groupsByEvent = false
+        store.attachUndoManager(manager)
+        func action(_ body: () -> Void) {
+            manager.beginUndoGrouping()
+            body()
+            manager.endUndoGrouping()
+        }
+        let id = store.createThread(title: "Parallel")!
+        precondition(store.addParallelNow(id) == nil, "An empty NOW is edited instead of adding a row")
+        store.editNow(id, text: "Calibration")
+        store.commitNow(id)
+
+        // Adding twice reuses the blank row; an abandoned blank row disappears.
+        let blank = store.addParallelNow(id)!
+        precondition(store.addParallelNow(id) == blank)
+        store.commitNowItem(id, itemID: blank)
+        precondition(!store.thread(id)!.hasParallelNow && store.thread(id)!.parallelNow == nil)
+
+        let b = store.addParallelNow(id)!
+        store.editNowItem(id, itemID: b, text: "Wait for Qwen")
+        store.commitNowItem(id, itemID: b)
+        let c = store.addParallelNow(id)!
+        store.editNowItem(id, itemID: c, text: "Repro script")
+        store.commitNowItem(id, itemID: c)
+        precondition(store.thread(id)!.parallelItems.map(\.text) == ["Wait for Qwen", "Repro script"])
+        precondition(store.thread(id)!.timeline.isEmpty, "Creating items records no history")
+
+        // Updating an item archives its previous text, like the main NOW.
+        action { store.editNowItem(id, itemID: c, text: "Repro script v2"); store.commitNowItem(id, itemID: c) }
+        precondition(store.thread(id)!.timeline.map(\.text) == ["Repro script"])
+        manager.undo()
+        precondition(store.thread(id)!.parallelItems.last!.text == "Repro script")
+        precondition(store.thread(id)!.timeline.isEmpty)
+        manager.redo()
+        precondition(store.thread(id)!.parallelItems.last!.text == "Repro script v2")
+
+        action { store.setNowWaiting(id, itemID: b, waiting: true) }
+        precondition(store.thread(id)!.parallelItems.first!.waiting)
+        manager.undo()
+        precondition(!store.thread(id)!.parallelItems.first!.waiting)
+        manager.redo()
+
+        // Completing one item leaves the others alone.
+        action { precondition(store.completeNowItem(id, itemID: c)) }
+        precondition(store.thread(id)!.parallelItems.map(\.id) == [b])
+        precondition(store.thread(id)!.timeline.last!.text == "Repro script v2")
+        precondition(store.thread(id)!.now == "Calibration")
+        manager.undo()
+        precondition(store.thread(id)!.parallelItems.map(\.id) == [b, c])
+        manager.redo()
+
+        // Completing the main NOW promotes the next item, keeping its state.
+        action { precondition(store.completeNow(id)) }
+        precondition(store.thread(id)!.now == "Wait for Qwen" && store.thread(id)!.isNowWaiting)
+        precondition(store.thread(id)!.parallelNow == nil)
+        manager.undo()
+        precondition(store.thread(id)!.now == "Calibration" && !store.thread(id)!.isNowWaiting)
+        precondition(store.thread(id)!.parallelItems.map(\.id) == [b])
+        manager.redo()
+        precondition(store.thread(id)!.now == "Wait for Qwen")
+
+        // A timeline record returns as a parallel item while NOW is busy.
+        let calibration = store.thread(id)!.timeline.first { $0.text == "Calibration" }!
+        action { store.returnEventToNow(id, eventID: calibration.id) }
+        precondition(store.thread(id)!.parallelItems.map(\.text) == ["Calibration"])
+        precondition(!store.thread(id)!.timeline.contains { $0.id == calibration.id })
+        manager.undo()
+        precondition(store.thread(id)!.parallelNow == nil)
+        precondition(store.thread(id)!.timeline.contains(calibration), "Undo keeps the record's ID and date")
+        manager.redo()
+        precondition(store.thread(id)!.parallelItems.map(\.text) == ["Calibration"])
+
+        // ...and into the main NOW when that is empty.
+        let other = store.createThread(title: "Single")!
+        store.editNow(other, text: "Only")
+        store.commitNow(other)
+        precondition(store.completeNow(other))
+        let only = store.thread(other)!.timeline.last!
+        action { store.returnEventToNow(other, eventID: only.id) }
+        precondition(store.thread(other)!.now == "Only" && store.thread(other)!.timeline.isEmpty)
+        precondition(store.thread(other)!.parallelNow == nil)
+
+        let doomed = store.thread(id)!.timeline.first!
+        action { store.deleteEvent(id, eventID: doomed.id) }
+        precondition(!store.thread(id)!.timeline.contains(doomed))
+        manager.undo()
+        precondition(store.thread(id)!.timeline.contains(doomed))
+        manager.redo()
+        precondition(!store.thread(id)!.timeline.contains(doomed))
+
+        // Drafts of parallel items survive a restart and commit on status change.
+        let d = store.thread(id)!.parallelItems.first!.id
+        store.editNowItem(id, itemID: d, text: "Calibration draft")
+        precondition(store.flush())
+        let reopened = try WorkspaceStore(url: url)
+        precondition(reopened.threads == store.threads)
+        precondition(reopened.thread(id)!.parallelItems.first!.draft == "Calibration draft")
+        store.setStatus(id, to: .sleeping)
+        precondition(store.thread(id)!.parallelItems.first!.text == "Calibration draft")
+        precondition(store.thread(id)!.parallelItems.first!.draft == nil)
+
+        // Export/import round-trips parallel items; older JSON without them loads.
+        let data = try WorkspaceArchive.encode(store.threads)
+        let decoded = try WorkspaceArchive.decode(data)
+        precondition(decoded.threads == store.threads)
+        var legacy = WorkThread(title: "Legacy", now: "Old")
+        legacy.parallelNow = nil
+        let legacyData = try JSONEncoder().encode(legacy)
+        precondition(!String(decoding: legacyData, as: UTF8.self).contains("parallelNow"))
+        let decodedLegacy = try JSONDecoder().decode(WorkThread.self, from: legacyData)
+        precondition(decodedLegacy == legacy)
     }
 
     @MainActor

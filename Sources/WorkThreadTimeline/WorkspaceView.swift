@@ -4,12 +4,14 @@ import AppKit
 enum ThreadEditor: Hashable {
     case title(UUID)
     case now(UUID)
+    /// A parallel NOW item: (thread, item).
+    case nowItem(UUID, UUID)
     case next(UUID)
     case event(UUID)
 
     var threadID: UUID {
         switch self {
-        case .title(let id), .now(let id), .next(let id), .event(let id): id
+        case .title(let id), .now(let id), .next(let id), .event(let id), .nowItem(let id, _): id
         }
     }
 }
@@ -178,6 +180,10 @@ struct WorkspaceView: View {
                         guard EditingBoundary.endEditing() else { return }
                         editor = nil
                         DispatchQueue.main.async { store.commitNow(id) }
+                    case .nowItem(let id, let itemID):
+                        guard EditingBoundary.endEditing() else { return }
+                        editor = nil
+                        DispatchQueue.main.async { store.commitNowItem(id, itemID: itemID) }
                     case .next, .title:
                         // NOTE already autosaves. End only the current edit;
                         // never redirect its submit shortcut to another field.
@@ -208,6 +214,7 @@ struct WorkspaceView: View {
             }
             .onChange(of: editor) { old, value in
                 if case .now(let id) = old { store.commitNow(id) }
+                if case .nowItem(let id, let itemID) = old { store.commitNowItem(id, itemID: itemID) }
                 if case .title(let id) = old { store.finishTitle(id) }
                 if let value { selectedID = value.threadID }
             }
@@ -383,6 +390,12 @@ private struct DoneThreadsView: View {
                                         .font(AppTheme.Typography.callout)
                                         .foregroundStyle(AppTheme.Colors.secondaryText)
                                         .lineLimit(3)
+                                }
+                                ForEach(thread.parallelItems) { item in
+                                    Text(item.displayed)
+                                        .font(AppTheme.Typography.callout)
+                                        .foregroundStyle(AppTheme.Colors.secondaryText)
+                                        .lineLimit(2)
                                 }
                                 if thread.eventDraft != nil {
                                     Text("Unsubmitted event draft saved")

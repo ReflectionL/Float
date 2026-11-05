@@ -18,13 +18,11 @@ struct ThreadColumnView: View {
             header
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 20) {
-                    contextEditor("Now", text: Binding(
-                        get: {
-                            let current = store.thread(thread.id)
-                            return current?.nowDraft ?? current?.now ?? ""
-                        },
-                        set: { store.editNow(thread.id, text: $0) }
-                    ), field: .now(thread.id), prominent: true)
+                    if thread.hasParallelNow {
+                        parallelNow
+                    } else {
+                        contextEditor("Now", text: mainNowText, field: .now(thread.id), prominent: true)
+                    }
                     contextEditor("Note", text: Binding(
                         get: { store.thread(thread.id)?.next ?? "" }, set: { store.editNext(thread.id, text: $0) }
                     ), field: .next(thread.id), prominent: false)
@@ -52,13 +50,22 @@ struct ThreadColumnView: View {
         .onChange(of: editor.wrappedValue) { _, field in
             // The conditional event field must mount before requesting native
             // focus; focusing a missing field can fall back to the title.
-            if field != .event(thread.id) {
+            if case .nowItem(let id, _) = field, id == thread.id {
+                // A new parallel row mounts in this update; focus it after.
+                DispatchQueue.main.async {
+                    if editor.wrappedValue == field { localEditor = field }
+                }
+            } else if field != .event(thread.id) {
                 localEditor = field?.threadID == thread.id ? field : nil
             }
         }
-        .onChange(of: localEditor) { _, field in
+        .onChange(of: localEditor) { old, field in
             if let field {
                 if editor.wrappedValue != field { editor.wrappedValue = field }
+            } else if case .nowItem? = editor.wrappedValue, old != editor.wrappedValue {
+                // Adding a parallel item switches NOW to the list layout, which
+                // unmounts the field that had focus. Focus is on its way to the
+                // new row, so this is not the end of editing.
             } else if editor.wrappedValue?.threadID == thread.id {
                 editor.wrappedValue = nil
             }
@@ -142,43 +149,173 @@ struct ThreadColumnView: View {
                     .contentShape(Rectangle())
                     .onTapGesture { editor.wrappedValue = field }
                 Spacer()
-                if prominent && !(thread.nowDraft ?? thread.now).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Button {
-                        guard !EditingBoundary.isComposing, EditingBoundary.endEditing() else { return }
-                        editor.wrappedValue = nil
-                        // Let the native field editor finish its final binding
-                        // callbacks before clearing the value it was editing.
-                        DispatchQueue.main.async { store.completeNow(thread.id) }
-                    } label: {
-                        IconButtonLabel(systemName: "checkmark", color: AppTheme.Colors.secondaryText)
+                if prominent {
+                    addNowButton
+                    if !(thread.nowDraft ?? thread.now).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button { complete(nil) } label: {
+                            IconButtonLabel(systemName: "checkmark", color: AppTheme.Colors.secondaryText)
+                        }
+                        .buttonStyle(HoverFillButtonStyle())
+                        .help("Complete NOW and move it to the timeline")
+                        .accessibilityLabel("Complete NOW for \(thread.title)")
                     }
-                    .buttonStyle(HoverFillButtonStyle())
-                    .help("Complete NOW and move it to the timeline")
-                    .accessibilityLabel("Complete NOW for \(thread.title)")
                 }
             }
-            TextField("", text: text, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(prominent ? AppTheme.Typography.now : AppTheme.Typography.note)
-                .foregroundStyle(prominent ? AppTheme.Colors.primaryText : AppTheme.Colors.secondaryText)
-                .lineSpacing(prominent ? AppTheme.Typography.nowLineSpacing : AppTheme.Typography.bodyLineSpacing)
-                .lineLimit(1...12)
-                .frame(height: text.wrappedValue.isEmpty && localEditor != field ? 8 : nil)
-                .padding(.vertical, 3)
-                .editingUnderline(localEditor == field)
-                .focused($localEditor, equals: field)
-                .onKeyPress(keys: [.return], phases: .down) { key in
-                    guard key.modifiers.intersection([.command, .control, .option]).isEmpty else { return .ignored }
-                    return EditingBoundary.insertLineBreak(in: NSApp.keyWindow?.firstResponder) ? .handled : .ignored
-                }
-                .onExitCommand {
-                    guard !EditingBoundary.isComposing else { return }
-                    if prominent { store.cancelNow(thread.id) }
-                    editor.wrappedValue = nil
-                }
-                .accessibilityLabel("\(thread.title), \(prominent ? "NOW" : "NOTE")")
+            textEditor(text: text, field: field,
+                       font: prominent ? AppTheme.Typography.now : AppTheme.Typography.note,
+                       color: prominent ? AppTheme.Colors.primaryText : AppTheme.Colors.secondaryText,
+                       lineSpacing: prominent ? AppTheme.Typography.nowLineSpacing : AppTheme.Typography.bodyLineSpacing,
+                       accessibility: prominent ? "NOW" : "NOTE") {
+                if prominent { store.cancelNow(thread.id) }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func textEditor(
+        text: Binding<String>, field: ThreadEditor, font: Font, color: Color,
+        lineSpacing: CGFloat, accessibility: String, cancel: @escaping () -> Void
+    ) -> some View {
+        // Return submits; Shift-Return starts a new line. While an input
+        // method is composing, Return stays with it.
+        TextField("", text: text, axis: .vertical)
+            .textFieldStyle(.plain)
+            .font(font)
+            .foregroundStyle(color)
+            .lineSpacing(lineSpacing)
+            .lineLimit(1...12)
+            .frame(height: text.wrappedValue.isEmpty && localEditor != field ? 8 : nil)
+            .padding(.vertical, 3)
+            .editingUnderline(localEditor == field)
+            .focused($localEditor, equals: field)
+            .onKeyPress(keys: [.return], phases: .down) { key in
+                guard key.modifiers.intersection([.command, .control, .option]).isEmpty,
+                      !EditingBoundary.isComposing else { return .ignored }
+                if key.modifiers.contains(.shift) {
+                    return EditingBoundary.insertLineBreak(in: NSApp.keyWindow?.firstResponder) ? .handled : .ignored
+                }
+                submit(field)
+                return .handled
+            }
+            .onExitCommand {
+                guard !EditingBoundary.isComposing else { return }
+                cancel()
+                editor.wrappedValue = nil
+            }
+            .onAppear {
+                // A new parallel row mounts after its editor was requested.
+                if case .nowItem = field, editor.wrappedValue == field {
+                    DispatchQueue.main.async {
+                        if editor.wrappedValue == field { localEditor = field }
+                    }
+                }
+            }
+            .accessibilityLabel("\(thread.title), \(accessibility)")
+    }
+
+    /// Ends editing and saves the field, like ⌘Return.
+    private func submit(_ field: ThreadEditor) {
+        guard EditingBoundary.endEditing() else { return }
+        editor.wrappedValue = nil
+        // Let the native field editor deliver its final text first.
+        DispatchQueue.main.async {
+            switch field {
+            case .now(let id): store.commitNow(id)
+            case .nowItem(let id, let itemID): store.commitNowItem(id, itemID: itemID)
+            default: store.flush()
+            }
+        }
+    }
+
+    private var mainNowText: Binding<String> {
+        Binding(
+            get: {
+                let current = store.thread(thread.id)
+                return current?.nowDraft ?? current?.now ?? ""
+            },
+            set: { store.editNow(thread.id, text: $0) }
+        )
+    }
+
+    private func itemText(_ itemID: UUID) -> Binding<String> {
+        Binding(
+            get: { store.thread(thread.id)?.parallelItems.first { $0.id == itemID }?.displayed ?? "" },
+            set: { store.editNowItem(thread.id, itemID: itemID, text: $0) }
+        )
+    }
+
+    private var addNowButton: some View {
+        Button {
+            guard !EditingBoundary.isComposing else { return }
+            if let itemID = store.addParallelNow(thread.id) {
+                editor.wrappedValue = .nowItem(thread.id, itemID)
+            } else {
+                editor.wrappedValue = .now(thread.id)
+            }
+        } label: { IconButtonLabel(systemName: "plus") }
+            .buttonStyle(HoverFillButtonStyle())
+            .help("Add a parallel NOW")
+            .accessibilityLabel("Add parallel NOW to \(thread.title)")
+    }
+
+    /// Completes the main NOW (nil) or a parallel item and archives it.
+    private func complete(_ itemID: UUID?) {
+        guard !EditingBoundary.isComposing, EditingBoundary.endEditing() else { return }
+        editor.wrappedValue = nil
+        // Let the native field editor finish its final binding callbacks
+        // before clearing the value it was editing.
+        DispatchQueue.main.async {
+            if let itemID { store.completeNowItem(thread.id, itemID: itemID) }
+            else { store.completeNow(thread.id) }
+        }
+    }
+
+    /// NOW with parallel items: equal rows, each with a circle that completes
+    /// it. A single NOW keeps the larger layout above.
+    private var parallelNow: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.extraSmall) {
+            HStack(spacing: AppTheme.Spacing.extraSmall) {
+                SectionLabel(text: "Now", emphasized: true)
+                Text("\(thread.parallelItems.count + 1)")
+                    .font(AppTheme.Typography.captionMedium)
+                    .monospacedDigit()
+                    .foregroundStyle(AppTheme.Colors.tertiaryText)
+                Spacer()
+                addNowButton
+            }
+            .frame(minHeight: AppTheme.ControlHeight.compact)
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
+                nowRow(text: mainNowText, field: .now(thread.id), itemID: nil,
+                       waiting: thread.isNowWaiting) { store.cancelNow(thread.id) }
+                ForEach(thread.parallelItems) { item in
+                    nowRow(text: itemText(item.id), field: .nowItem(thread.id, item.id), itemID: item.id,
+                           waiting: item.waiting) { store.cancelNowItem(thread.id, itemID: item.id) }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func nowRow(
+        text: Binding<String>, field: ThreadEditor, itemID: UUID?, waiting: Bool,
+        cancel: @escaping () -> Void
+    ) -> some View {
+        let hasText = !text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return HStack(alignment: .top, spacing: AppTheme.Spacing.small) {
+            NowCircle(waiting: waiting, enabled: hasText) { complete(itemID) }
+                .padding(.top, 3)
+                .accessibilityLabel("Complete \(text.wrappedValue)")
+            textEditor(text: text, field: field, font: AppTheme.Typography.nowItem,
+                       color: AppTheme.Colors.primaryText, lineSpacing: AppTheme.Typography.bodyLineSpacing,
+                       accessibility: "NOW", cancel: cancel)
+        }
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button("Complete") { complete(itemID) }.disabled(!hasText)
+            Button(waiting ? "Mark Active" : "Mark Waiting") {
+                store.setNowWaiting(thread.id, itemID: itemID, waiting: !waiting)
+            }
+        }
     }
 
     private var timeline: some View {
@@ -233,9 +370,15 @@ struct ThreadColumnView: View {
             }
             VStack(alignment: .leading, spacing: AppTheme.Spacing.large) {
                 ForEach(thread.sortedTimeline) { event in
-                    TimelineEventRow(event: event) {
+                    TimelineEventRow(event: event, togglePin: {
                         store.togglePin(thread.id, eventID: event.id)
-                    }
+                    }, returnToNow: {
+                        guard EditingBoundary.endEditing() else { return }
+                        editor.wrappedValue = nil
+                        DispatchQueue.main.async { store.returnEventToNow(thread.id, eventID: event.id) }
+                    }, delete: {
+                        store.deleteEvent(thread.id, eventID: event.id)
+                    })
                 }
             }
         }
@@ -245,6 +388,8 @@ struct ThreadColumnView: View {
 private struct TimelineEventRow: View {
     let event: TimelineEvent
     let togglePin: () -> Void
+    let returnToNow: () -> Void
+    let delete: () -> Void
     @ViewState private var hovering = false
     @FocusState private var pinFocused: Bool
 
@@ -279,5 +424,35 @@ private struct TimelineEventRow: View {
         }
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
+        .contextMenu {
+            Button("Return to Now", action: returnToNow)
+            Divider()
+            Button("Delete", role: .destructive, action: delete)
+        }
+    }
+}
+
+/// The circle in front of a parallel NOW item. Click completes the item; a
+/// dashed outline marks an item that is waiting.
+private struct NowCircle: View {
+    let waiting: Bool
+    let enabled: Bool
+    let action: () -> Void
+    @ViewState private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Circle()
+                .strokeBorder(hovering && enabled ? AppTheme.Colors.success : AppTheme.Colors.tertiaryText,
+                              style: StrokeStyle(lineWidth: 1.5, dash: waiting ? [2.5, 2] : []))
+                .frame(width: 14, height: 14)
+                .frame(width: 18, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .onHover { hovering = $0 }
+        .animation(AppTheme.Motion.fast, value: hovering)
+        .help(waiting ? "Waiting · click to complete" : "Complete and move to the timeline")
     }
 }

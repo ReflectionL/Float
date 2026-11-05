@@ -42,6 +42,7 @@ struct WorkspaceArchive: Codable {
               threads.allSatisfy({
                   Set($0.timeline.map(\.id)).count == $0.timeline.count
                     && Set($0.checklistItems.map(\.id)).count == $0.checklistItems.count
+                    && Set($0.parallelItems.map(\.id)).count == $0.parallelItems.count
               }) else {
             throw ArchiveError.duplicateIDs
         }
