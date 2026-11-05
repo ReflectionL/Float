@@ -63,12 +63,6 @@ struct WorkspaceView: View {
                                     submitEvent: { submitEvent(thread.id) }
                                 ))
                                 .frame(width: AppTheme.Metrics.columnWidth)
-                                .overlay(alignment: .leading) {
-                                    if index > 0 {
-                                        ColumnDivider(hidden: selectedID == thread.id
-                                                      || selectedID == visible[index - 1].id)
-                                    }
-                                }
                                 .id(thread.id)
                             }
                         }
@@ -129,9 +123,9 @@ struct WorkspaceView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button { showingDone = true } label: {
-                        Label("Done (\(store.doneThreads.count))", systemImage: "archivebox")
+                        Label("已完成 \(store.doneThreads.count)", systemImage: "archivebox")
                     }
-                    .labelStyle(.iconOnly)
+                    .labelStyle(.titleAndIcon)
                     .help("Done threads (\(store.doneThreads.count))")
                     .popover(isPresented: $showingDone) {
                         DoneThreadsView(store: store, restore: { id, status in
@@ -148,6 +142,7 @@ struct WorkspaceView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button { creating = true } label: { Label("New Thread", systemImage: "plus") }
                         .labelStyle(.iconOnly)
+                        .buttonStyle(.borderedProminent)
                         .help("New Thread (⌘N)")
                         .popover(isPresented: $creating) {
                             CreateThreadView { title in
@@ -287,24 +282,6 @@ struct WorkspaceView: View {
         // Let the native editor's final callbacks finish before clearing the
         // draft, so its previous text cannot reappear after submission.
         DispatchQueue.main.async { store.submitEventDraft(id) }
-    }
-}
-
-/// A hairline centred in the gap before a column. Hidden next to the selected
-/// column, whose panel already sets it apart.
-private struct ColumnDivider: View {
-    let hidden: Bool
-
-    var body: some View {
-        Rectangle()
-            .fill(AppTheme.Colors.stroke)
-            .frame(width: AppTheme.Metrics.hairline)
-            .padding(.vertical, AppTheme.Spacing.medium)
-            .offset(x: -(AppTheme.Metrics.columnSpacing + AppTheme.Metrics.hairline) / 2)
-            .opacity(hidden ? 0 : 1)
-            .animation(AppTheme.Motion.fast, value: hidden)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
     }
 }
 

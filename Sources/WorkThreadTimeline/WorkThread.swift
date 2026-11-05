@@ -18,6 +18,16 @@ enum ThreadStatus: String, Codable, CaseIterable {
         }
     }
 
+    /// The name shown in the workspace (the stored value stays English).
+    var displayName: String {
+        switch self {
+        case .active: "进行中"
+        case .waiting: "等待中"
+        case .sleeping: "休眠"
+        case .done: "已完成"
+        }
+    }
+
     var color: Color {
         switch self {
         case .active: .green
