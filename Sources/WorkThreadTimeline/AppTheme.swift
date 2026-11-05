@@ -6,9 +6,13 @@ import SwiftUI
 /// and a small set of motion curves. Views use these instead of literal values.
 enum AppTheme {
     enum Metrics {
-        static let columnWidth: CGFloat = 340
-        static let columnSpacing: CGFloat = 10
-        static let columnInset: CGFloat = 20
+        static let columnWidth: CGFloat = 316
+        static let columnSpacing: CGFloat = 8
+        static let columnInset: CGFloat = 24
+        /// Space between NOW, NOTE and TIMELINE in a column.
+        static let sectionGap: CGFloat = 22
+        /// The time column in front of each timeline entry.
+        static let timelineTimeWidth: CGFloat = 44
         static let workspaceInset: CGFloat = 16
         static let minimumWindowWidth: CGFloat = 760
         static let minimumWindowHeight: CGFloat = 520
@@ -72,7 +76,7 @@ enum AppTheme {
         static let bodyLineSpacing: CGFloat = 3
         static let nowLineSpacing: CGFloat = 4
         /// Letter spacing for uppercase section labels.
-        static let labelTracking: CGFloat = 0.6
+        static let labelTracking: CGFloat = 1.2
     }
 
     /// A light and a dark value for each token.
@@ -189,7 +193,8 @@ struct IconButtonLabel: View {
     }
 }
 
-/// An uppercase section label in the style of the sidebar headers.
+/// A small, widely tracked section label (现在 / 备注 / 时间线). The NOW label
+/// carries the accent so the eye lands there first.
 struct SectionLabel: View {
     let text: String
     var emphasized = false
@@ -198,7 +203,29 @@ struct SectionLabel: View {
         Text(text.uppercased())
             .font(AppTheme.Typography.label)
             .tracking(AppTheme.Typography.labelTracking)
-            .foregroundStyle(emphasized ? AppTheme.Colors.secondaryText : AppTheme.Colors.tertiaryText)
+            .foregroundStyle(emphasized ? AppTheme.Colors.accentText : AppTheme.Colors.tertiaryText)
+    }
+}
+
+/// Short dates in the workspace: "14:05" today, "昨天" yesterday, else "11月3日".
+enum ShortDate {
+    static func day(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
+        if calendar.isDate(date, inSameDayAs: now) { return "今天" }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
+           calendar.isDate(date, inSameDayAs: yesterday) { return "昨天" }
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        let sameYear = calendar.component(.year, from: now) == parts.year
+        return (sameYear ? "" : "\(parts.year ?? 0)年") + "\(parts.month ?? 0)月\(parts.day ?? 0)日"
+    }
+
+    static func time(_ date: Date, calendar: Calendar = .current) -> String {
+        let parts = calendar.dateComponents([.hour, .minute], from: date)
+        return String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+    }
+
+    /// When a thread was last touched: the time today, otherwise the day.
+    static func updated(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
+        calendar.isDate(date, inSameDayAs: now) ? time(date, calendar: calendar) : day(date, now: now, calendar: calendar)
     }
 }
 

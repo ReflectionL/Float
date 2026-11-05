@@ -17,30 +17,35 @@ struct ThreadColumnView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: AppTheme.Metrics.sectionGap) {
                     if thread.hasParallelNow {
                         parallelNow
                     } else {
-                        contextEditor("Now", text: mainNowText, field: .now(thread.id), prominent: true)
+                        contextEditor("现在", text: mainNowText, field: .now(thread.id), prominent: true)
                     }
-                    contextEditor("Note", text: Binding(
+                    contextEditor("备注", text: Binding(
                         get: { store.thread(thread.id)?.next ?? "" }, set: { store.editNext(thread.id, text: $0) }
                     ), field: .next(thread.id), prominent: false)
                     timeline
                 }
                 .padding(.horizontal, AppTheme.Metrics.columnInset)
-                .padding(.top, AppTheme.Spacing.small)
-                .padding(.bottom, AppTheme.Spacing.extraLarge)
+                .padding(.top, AppTheme.Spacing.extraSmall)
+                .padding(.bottom, AppTheme.Spacing.section)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollContentBackground(.hidden)
         }
-        // The selected thread sits on a quiet neutral panel; the others stay on
-        // the canvas and are separated by hairlines drawn by the workspace.
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.large, style: .continuous)
+        // The selected thread is a sheet lifted off the canvas: a quiet fill,
+        // a hairline edge and a soft shadow. The others stay on the canvas,
+        // separated only by space.
+        .background {
+            let shape = RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+            shape
                 .fill(selected ? AppTheme.Colors.selectedSurface : AppTheme.Colors.canvas)
-        )
+                .overlay(shape.strokeBorder(selected ? AppTheme.Colors.stroke : .clear,
+                                            lineWidth: AppTheme.Metrics.hairline))
+                .shadow(color: .black.opacity(selected ? 0.05 : 0), radius: 4, y: 2)
+        }
         .animation(AppTheme.Motion.fast, value: selected)
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded { select() })
@@ -75,8 +80,8 @@ struct ThreadColumnView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 8) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.extraSmall) {
+            HStack(alignment: .center, spacing: AppTheme.Spacing.small) {
                 TextField("Thread title", text: Binding(get: { thread.title }, set: { store.rename(thread.id, to: $0) }))
                     .textFieldStyle(.plain)
                     .font(AppTheme.Typography.headline)
@@ -90,33 +95,38 @@ struct ThreadColumnView: View {
                     .frame(width: AppTheme.ControlHeight.compact, height: AppTheme.ControlHeight.compact)
                 actionsMenu
             }
-            HStack {
+            // A coloured dot, the status, and when the thread was last touched.
+            HStack(spacing: AppTheme.Spacing.extraSmall) {
                 Menu {
                     ForEach(ThreadStatus.allCases, id: \.self) { status in
                         Button { store.setStatus(thread.id, to: status) } label: {
-                            Label(status.rawValue, systemImage: status == thread.status ? "checkmark" : status.symbol)
+                            Label(status.displayName, systemImage: status == thread.status ? "checkmark" : status.symbol)
                         }
                     }
                 } label: {
                     Label {
-                        Text(thread.status.rawValue)
-                            .tracking(AppTheme.Typography.labelTracking)
+                        Text(thread.status.displayName)
                             .foregroundStyle(AppTheme.Colors.secondaryText)
                     } icon: {
-                        Image(systemName: thread.status.symbol)
+                        Image(systemName: "circle.fill")
+                            .font(.system(size: 6))
                             .renderingMode(.original)
                             .symbolRenderingMode(.palette)
-                            .foregroundStyle(selected ? AppTheme.Colors.accentText : AppTheme.Colors.tertiaryText)
+                            .foregroundStyle(thread.status.tint)
                     }
-                    .font(AppTheme.Typography.captionMedium)
+                    .font(AppTheme.Typography.caption)
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                 .help("Change thread status")
+                Text("· 更新于 \(ShortDate.updated(thread.updatedAt))")
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(AppTheme.Colors.tertiaryText)
+                    .lineLimit(1)
             }
         }
         .padding(.horizontal, AppTheme.Metrics.columnInset)
-        .padding(.top, AppTheme.Spacing.small)
-        .padding(.bottom, AppTheme.Spacing.medium)
+        .padding(.top, AppTheme.Spacing.large)
+        .padding(.bottom, AppTheme.Metrics.sectionGap)
         .contentShape(Rectangle())
         .onHover { hoveringHeader = $0 }
     }
@@ -275,7 +285,7 @@ struct ThreadColumnView: View {
     private var parallelNow: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.extraSmall) {
             HStack(spacing: AppTheme.Spacing.extraSmall) {
-                SectionLabel(text: "Now", emphasized: true)
+                SectionLabel(text: "现在", emphasized: true)
                 Text("\(thread.parallelItems.count + 1)")
                     .font(AppTheme.Typography.captionMedium)
                     .monospacedDigit()
@@ -319,9 +329,9 @@ struct ThreadColumnView: View {
     }
 
     private var timeline: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.medium) {
             HStack(spacing: AppTheme.Spacing.extraSmall) {
-                SectionLabel(text: "Timeline")
+                SectionLabel(text: "时间线")
                 Spacer()
                 Button {
                     guard !EditingBoundary.isComposing else { return }
@@ -368,20 +378,48 @@ struct ThreadColumnView: View {
                     }
                 }
             }
+            // Newest first, grouped under a day heading (今天 / 昨天 / 11月3日).
             VStack(alignment: .leading, spacing: AppTheme.Spacing.large) {
-                ForEach(thread.sortedTimeline) { event in
-                    TimelineEventRow(event: event, togglePin: {
-                        store.togglePin(thread.id, eventID: event.id)
-                    }, returnToNow: {
-                        guard EditingBoundary.endEditing() else { return }
-                        editor.wrappedValue = nil
-                        DispatchQueue.main.async { store.returnEventToNow(thread.id, eventID: event.id) }
-                    }, delete: {
-                        store.deleteEvent(thread.id, eventID: event.id)
-                    })
+                ForEach(timelineDays, id: \.day) { group in
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
+                        Text(group.day)
+                            .font(AppTheme.Typography.captionMedium)
+                            .foregroundStyle(AppTheme.Colors.secondaryText)
+                        VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
+                            ForEach(group.events) { event in
+                                TimelineEventRow(event: event, togglePin: {
+                                    store.togglePin(thread.id, eventID: event.id)
+                                }, returnToNow: {
+                                    guard EditingBoundary.endEditing() else { return }
+                                    editor.wrappedValue = nil
+                                    DispatchQueue.main.async { store.returnEventToNow(thread.id, eventID: event.id) }
+                                }, delete: {
+                                    store.deleteEvent(thread.id, eventID: event.id)
+                                })
+                            }
+                        }
+                    }
                 }
             }
         }
+        .padding(.top, AppTheme.Spacing.large)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(AppTheme.Colors.stroke)
+                .frame(height: AppTheme.Metrics.hairline)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// The timeline, newest first, split into consecutive runs of one day.
+    private var timelineDays: [(day: String, events: [TimelineEvent])] {
+        var groups: [(day: String, events: [TimelineEvent])] = []
+        for event in thread.sortedTimeline {
+            let day = ShortDate.day(event.createdAt)
+            if groups.last?.day == day { groups[groups.count - 1].events.append(event) }
+            else { groups.append((day, [event])) }
+        }
+        return groups
     }
 }
 
@@ -394,11 +432,12 @@ private struct TimelineEventRow: View {
     @FocusState private var pinFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.extraSmall) {
-            Text(event.createdAt.formatted(.dateTime.month(.abbreviated).day().hour().minute()))
+        HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.small) {
+            Text(ShortDate.time(event.createdAt))
                 .font(AppTheme.Typography.caption)
                 .monospacedDigit()
                 .foregroundStyle(AppTheme.Colors.tertiaryText)
+                .frame(width: AppTheme.Metrics.timelineTimeWidth, alignment: .leading)
             Text(event.text)
                 .font(event.pinned ? AppTheme.Typography.bodyMedium : AppTheme.Typography.body)
                 .foregroundStyle(event.pinned ? AppTheme.Colors.primaryText : AppTheme.Colors.secondaryText)
