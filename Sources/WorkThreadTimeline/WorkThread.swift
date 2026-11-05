@@ -35,6 +35,18 @@ struct TimelineEvent: Identifiable, Codable, Equatable {
     var isPreviousNow = false
 }
 
+/// An extra NOW item running in parallel with the thread's main NOW. The main
+/// NOW stays in `WorkThread.now` so older stores and backups keep their shape.
+struct NowItem: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var text: String
+    var draft: String?
+    var waiting = false
+    var createdAt = Date()
+
+    var displayed: String { draft ?? text }
+}
+
 struct ChecklistItem: Identifiable, Codable, Equatable {
     var id = UUID()
     var text = ""
@@ -50,6 +62,11 @@ struct WorkThread: Identifiable, Codable, Equatable {
     // Persist drafts separately so an interrupted edit cannot lose the old NOW.
     var nowDraft: String?
     var eventDraft: String?
+    /// Parallel NOW items after the main one; nil when there are none. Older
+    /// versions ignore this field.
+    var parallelNow: [NowItem]?
+    /// Whether the main NOW is waiting on something; nil means active.
+    var nowWaiting: Bool?
     // Legacy field retained for decoding old stores and backups; migrated to NOTE.
     var checklist: [ChecklistItem]?
     var timeline: [TimelineEvent] = []
@@ -59,6 +76,10 @@ struct WorkThread: Identifiable, Codable, Equatable {
     var completedAt: Date?
 
     var checklistItems: [ChecklistItem] { checklist ?? [] }
+    var parallelItems: [NowItem] { parallelNow ?? [] }
+    var isNowWaiting: Bool { nowWaiting ?? false }
+    /// True when NOW shows as a list of parallel items.
+    var hasParallelNow: Bool { !parallelItems.isEmpty }
 
     mutating func migrateLegacyChecklistToNote() {
         guard let checklist else { return }

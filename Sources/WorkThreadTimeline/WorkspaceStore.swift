@@ -92,6 +92,7 @@ final class WorkspaceStore: ObservableObject {
             threads[index].updatedAt = Date()
         }
         threads[index].nowDraft = nil
+        Self.promoteParallelNow(&threads[index])
         changed()
         if newValue != oldValue {
             recordNowUndo(before, name: "Update Now", restoreDraft: false)
@@ -118,9 +119,173 @@ final class WorkspaceStore: ObservableObject {
             $0.timeline.append(TimelineEvent(text: value, isPreviousNow: true))
             $0.now = ""
             $0.nowDraft = nil
+            $0.nowWaiting = nil
+            Self.promoteParallelNow(&$0)
         }
         recordNowUndo(current, name: "Complete Now", restoreDraft: true)
         return true
+    }
+
+    // MARK: Parallel NOW items
+
+    /// Adds an empty parallel item and returns its ID, or nil when the main NOW
+    /// is still empty and should be edited instead.
+    func addParallelNow(_ id: UUID) -> UUID? {
+        guard let current = thread(id) else { return nil }
+        if !current.hasParallelNow,
+           (current.nowDraft ?? current.now).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return nil
+        }
+        // Reuse an untouched empty item instead of stacking blank rows.
+        if let blank = current.parallelItems.first(where: {
+            $0.displayed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) { return blank.id }
+        let item = NowItem(text: "")
+        update(id) { $0.parallelNow = $0.parallelItems + [item] }
+        return item.id
+    }
+
+    func editNowItem(_ id: UUID, itemID: UUID, text: String) {
+        guard let item = thread(id)?.parallelItems.first(where: { $0.id == itemID }),
+              text != item.displayed else { return }
+        updateItem(id, itemID) { $0.draft = text }
+    }
+
+    func commitNowItem(_ id: UUID, itemID: UUID) {
+        guard let before = thread(id),
+              let item = before.parallelItems.first(where: { $0.id == itemID }) else { return }
+        let newValue = item.displayed.trimmingCharacters(in: .whitespacesAndNewlines)
+        let oldValue = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard item.draft != nil || newValue.isEmpty else { return }
+        update(id) { thread in
+            guard let index = thread.parallelItems.firstIndex(where: { $0.id == itemID }) else { return }
+            if newValue != oldValue, !oldValue.isEmpty {
+                thread.timeline.append(TimelineEvent(text: item.text, isPreviousNow: true))
+            }
+            if newValue.isEmpty {
+                thread.parallelNow?.remove(at: index)
+            } else {
+                thread.parallelNow?[index].text = newValue
+                thread.parallelNow?[index].draft = nil
+            }
+            Self.promoteParallelNow(&thread)
+        }
+        if newValue != oldValue {
+            recordNowUndo(before, name: "Update Now", restoreDraft: false)
+        }
+    }
+
+    func cancelNowItem(_ id: UUID, itemID: UUID) {
+        guard let item = thread(id)?.parallelItems.first(where: { $0.id == itemID }) else { return }
+        if item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            update(id) {
+                $0.parallelNow?.removeAll { $0.id == itemID }
+                Self.promoteParallelNow(&$0)
+            }
+        } else if item.draft != nil {
+            updateItem(id, itemID) { $0.draft = nil }
+        }
+    }
+
+    @discardableResult
+    func completeNowItem(_ id: UUID, itemID: UUID) -> Bool {
+        guard let current = thread(id),
+              let item = current.parallelItems.first(where: { $0.id == itemID }) else { return false }
+        let value = item.displayed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return false }
+        update(id) { thread in
+            let old = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if item.draft != nil, old != value, !old.isEmpty {
+                thread.timeline.append(TimelineEvent(text: item.text, isPreviousNow: true))
+            }
+            thread.timeline.append(TimelineEvent(text: value, isPreviousNow: true))
+            thread.parallelNow?.removeAll { $0.id == itemID }
+            Self.promoteParallelNow(&thread)
+        }
+        recordNowUndo(current, name: "Complete Now", restoreDraft: true)
+        return true
+    }
+
+    /// Marks the main NOW (itemID nil) or a parallel item as waiting or active.
+    func setNowWaiting(_ id: UUID, itemID: UUID?, waiting: Bool) {
+        guard let current = thread(id) else { return }
+        if let itemID {
+            guard let item = current.parallelItems.first(where: { $0.id == itemID }),
+                  item.waiting != waiting else { return }
+            updateItem(id, itemID) { $0.waiting = waiting }
+        } else {
+            guard current.isNowWaiting != waiting else { return }
+            update(id) { $0.nowWaiting = waiting ? true : nil }
+        }
+        recordUndo(waiting ? "Mark Waiting" : "Mark Active") {
+            $0.setNowWaiting(id, itemID: itemID, waiting: !waiting)
+        }
+    }
+
+    // MARK: Timeline corrections
+
+    /// Moves a timeline record back to NOW: into the main NOW when it is
+    /// empty, otherwise as a new parallel item.
+    func returnEventToNow(_ id: UUID, eventID: UUID) {
+        guard let before = thread(id),
+              let event = before.timeline.first(where: { $0.id == eventID }) else { return }
+        let text = event.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        update(id) { thread in
+            thread.timeline.removeAll { $0.id == eventID }
+            if (thread.nowDraft ?? thread.now).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                thread.now = text
+                thread.nowDraft = nil
+            } else {
+                thread.parallelNow = thread.parallelItems + [NowItem(text: text)]
+            }
+            Self.promoteParallelNow(&thread)
+        }
+        let state = NowState(before)
+        recordUndo("Return to Now") {
+            $0.restoreNow(id, state: state, events: [event], affected: [eventID], name: "Return to Now")
+        }
+    }
+
+    func deleteEvent(_ id: UUID, eventID: UUID) {
+        guard let current = thread(id),
+              let event = current.timeline.first(where: { $0.id == eventID }) else { return }
+        update(id) { $0.timeline.removeAll { $0.id == eventID } }
+        let state = NowState(current)
+        recordUndo("Delete Timeline Event") {
+            $0.restoreNow(id, state: state, events: [event], affected: [eventID], name: "Delete Timeline Event")
+        }
+    }
+
+    /// Commits the main NOW and every parallel item being edited.
+    func commitAllNow(_ id: UUID) {
+        commitNow(id)
+        for item in thread(id)?.parallelItems ?? [] where item.draft != nil {
+            commitNowItem(id, itemID: item.id)
+        }
+    }
+
+    /// Keeps the main NOW filled while parallel items remain, and stores no
+    /// empty list.
+    static func promoteParallelNow(_ thread: inout WorkThread) {
+        if thread.nowDraft == nil, thread.now.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let index = thread.parallelItems.firstIndex(where: {
+               !$0.displayed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+           }) {
+            let item = thread.parallelItems[index]
+            thread.parallelNow?.remove(at: index)
+            thread.now = item.text
+            thread.nowDraft = item.draft
+            thread.nowWaiting = item.waiting ? true : nil
+        }
+        if thread.parallelNow?.isEmpty == true { thread.parallelNow = nil }
+    }
+
+    private func updateItem(_ id: UUID, _ itemID: UUID, change: (inout NowItem) -> Void) {
+        update(id) { thread in
+            guard let index = thread.parallelItems.firstIndex(where: { $0.id == itemID }) else { return }
+            change(&thread.parallelNow![index])
+        }
     }
 
     func editNext(_ id: UUID, text: String) {
@@ -130,7 +295,7 @@ final class WorkspaceStore: ObservableObject {
 
     func setStatus(_ id: UUID, to status: ThreadStatus) {
         guard let thread = thread(id), thread.status != status else { return }
-        commitNow(id)
+        commitAllNow(id)
         finishTitle(id)
         update(id) {
             $0.status = status
@@ -218,7 +383,7 @@ final class WorkspaceStore: ObservableObject {
     func flush(commitDrafts: Bool = false) -> Bool {
         if commitDrafts {
             for id in threads.map(\.id) {
-                commitNow(id)
+                commitAllNow(id)
                 finishTitle(id)
             }
         }
@@ -329,27 +494,50 @@ final class WorkspaceStore: ObservableObject {
         if newGroup { undoManager.endUndoGrouping() }
     }
 
+    /// Every NOW field an action can touch: the main NOW and parallel items.
+    private struct NowState {
+        var now: String
+        var draft: String?
+        var waiting: Bool?
+        var parallel: [NowItem]?
+
+        init(_ thread: WorkThread, keepDrafts: Bool = true) {
+            now = thread.now
+            draft = keepDrafts ? thread.nowDraft : nil
+            waiting = thread.nowWaiting
+            parallel = thread.parallelNow.map { items in
+                keepDrafts ? items : items.map { var item = $0; item.draft = nil; return item }
+            }
+        }
+
+        func apply(to thread: inout WorkThread) {
+            thread.now = now
+            thread.nowDraft = draft
+            thread.nowWaiting = waiting
+            thread.parallelNow = parallel
+        }
+    }
+
     private func recordNowUndo(_ before: WorkThread, name: String, restoreDraft: Bool) {
         guard let after = thread(before.id) else { return }
         let oldIDs = Set(before.timeline.map(\.id))
         let affected = Set(after.timeline.map(\.id)).subtracting(oldIDs)
+        let state = NowState(before, keepDrafts: restoreDraft)
         recordUndo(name) {
-            $0.restoreNow(before.id, now: before.now, draft: restoreDraft ? before.nowDraft : nil,
-                          events: [], affected: affected, name: name)
+            $0.restoreNow(before.id, state: state, events: [], affected: affected, name: name)
         }
     }
 
-    private func restoreNow(_ id: UUID, now: String, draft: String?, events: [TimelineEvent],
+    private func restoreNow(_ id: UUID, state: NowState, events: [TimelineEvent],
                             affected: Set<UUID>, name: String) {
         guard let current = thread(id) else { return }
         let existing = current.timeline.filter { affected.contains($0.id) }
+        let currentState = NowState(current)
         recordUndo(name) {
-            $0.restoreNow(id, now: current.now, draft: current.nowDraft, events: existing,
-                          affected: affected, name: name)
+            $0.restoreNow(id, state: currentState, events: existing, affected: affected, name: name)
         }
         update(id) {
-            $0.now = now
-            $0.nowDraft = draft
+            state.apply(to: &$0)
             $0.timeline.removeAll { affected.contains($0.id) }
             $0.timeline.append(contentsOf: events)
         }
