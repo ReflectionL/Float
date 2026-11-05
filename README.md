@@ -36,7 +36,7 @@ bash scripts/build-app.sh --open
 - 首次启动提供三个示例，以后加载本地数据，不重复添加示例。
 - 新建、重命名线程，行内编辑 NOW / NOTE。NOTE 用于自由备注，原 NEXT 内容保留；为兼容旧备份，JSON 存储字段仍叫 `next`。
 - ACTIVE / WAITING / SLEEPING / DONE 状态切换。
-- NOW 草稿自动保存；离开编辑框或在 NOW 内按 ⌘Return 提交，原 NOW 只生成一条时间线记录。无变化或原内容为空时不添加记录。
+- NOW 草稿自动保存；离开编辑框、按 Return 或 ⌘Return 提交，原 NOW 只生成一条时间线记录。无变化或原内容为空时不添加记录。
 - NOW 右侧仅在有非空内容时显示对号。点击后将当前内容放入 Timeline 并清空 NOW；重复点击不重复记录。如果存在尚未提交的修改，会先按普通更新规则保留旧 NOW，再归档当前文字。
 - NOW 支持多条并行：NOW 标题右侧加号新增一条，原 NOW 成为第一条。只有一条时界面与以前相同；两条以上切换为圆点列表（15 pt 中等字重、条目间只用间距分隔），标题旁显示条数。点击某条前面的圆圈完成该条并归档进 Timeline，其余不受影响；主条完成后下一条自动补上。右键可标为等待（虚线圆）或恢复。每条的更新与草稿规则和原 NOW 相同。数据存于可选字段 `parallelNow`，旧数据和旧备份照常加载，JSON 版本不变。
 - Timeline 记录右键可选「Return to Now」或「Delete」：回退时 NOW 为空就放回 NOW，否则作为新的并行条目；删除不弹确认。两者都可 ⌘Z / ⇧⌘Z。
@@ -54,8 +54,10 @@ bash scripts/build-app.sh --open
 | ⌘N | 新建线程 |
 | ⌘1 … ⌘9 | 按当前可见顺序聚焦线程 NOW |
 | ⌘[ / ⌘] | 上一个 / 下一个线程 |
+| Return | NOW 中提交更新，NOTE 中结束编辑；中文候选期间交给输入法处理 |
 | ⌘Return | NOW 中提交更新；Timeline 输入框中提交事件并收起；NOTE / 标题中结束编辑；无编辑时不跳转 |
-| Return / ⇧Return | 在 NOW、NOTE、事件输入框中换行；中文候选期间交给输入法处理 |
+| ⇧Return | 在 NOW、NOTE 中换行 |
+| Return / ⇧Return | 在事件输入框中换行；中文候选期间交给输入法处理 |
 | ⇧⌘Return | 聚焦事件输入框；已在输入框时提交事件 |
 | ⌘S | 立即保存，提交 NOW 草稿 |
 | Escape（NOW 内） | 取消本次 NOW 编辑 |

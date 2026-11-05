@@ -59,9 +59,13 @@ struct ThreadColumnView: View {
                 localEditor = field?.threadID == thread.id ? field : nil
             }
         }
-        .onChange(of: localEditor) { _, field in
+        .onChange(of: localEditor) { old, field in
             if let field {
                 if editor.wrappedValue != field { editor.wrappedValue = field }
+            } else if case .nowItem? = editor.wrappedValue, old != editor.wrappedValue {
+                // Adding a parallel item switches NOW to the list layout, which
+                // unmounts the field that had focus. Focus is on its way to the
+                // new row, so this is not the end of editing.
             } else if editor.wrappedValue?.threadID == thread.id {
                 editor.wrappedValue = nil
             }
@@ -172,6 +176,8 @@ struct ThreadColumnView: View {
         text: Binding<String>, field: ThreadEditor, font: Font, color: Color,
         lineSpacing: CGFloat, accessibility: String, cancel: @escaping () -> Void
     ) -> some View {
+        // Return submits; Shift-Return starts a new line. While an input
+        // method is composing, Return stays with it.
         TextField("", text: text, axis: .vertical)
             .textFieldStyle(.plain)
             .font(font)
@@ -183,15 +189,42 @@ struct ThreadColumnView: View {
             .editingUnderline(localEditor == field)
             .focused($localEditor, equals: field)
             .onKeyPress(keys: [.return], phases: .down) { key in
-                guard key.modifiers.intersection([.command, .control, .option]).isEmpty else { return .ignored }
-                return EditingBoundary.insertLineBreak(in: NSApp.keyWindow?.firstResponder) ? .handled : .ignored
+                guard key.modifiers.intersection([.command, .control, .option]).isEmpty,
+                      !EditingBoundary.isComposing else { return .ignored }
+                if key.modifiers.contains(.shift) {
+                    return EditingBoundary.insertLineBreak(in: NSApp.keyWindow?.firstResponder) ? .handled : .ignored
+                }
+                submit(field)
+                return .handled
             }
             .onExitCommand {
                 guard !EditingBoundary.isComposing else { return }
                 cancel()
                 editor.wrappedValue = nil
             }
+            .onAppear {
+                // A new parallel row mounts after its editor was requested.
+                if case .nowItem = field, editor.wrappedValue == field {
+                    DispatchQueue.main.async {
+                        if editor.wrappedValue == field { localEditor = field }
+                    }
+                }
+            }
             .accessibilityLabel("\(thread.title), \(accessibility)")
+    }
+
+    /// Ends editing and saves the field, like ⌘Return.
+    private func submit(_ field: ThreadEditor) {
+        guard EditingBoundary.endEditing() else { return }
+        editor.wrappedValue = nil
+        // Let the native field editor deliver its final text first.
+        DispatchQueue.main.async {
+            switch field {
+            case .now(let id): store.commitNow(id)
+            case .nowItem(let id, let itemID): store.commitNowItem(id, itemID: itemID)
+            default: store.flush()
+            }
+        }
     }
 
     private var mainNowText: Binding<String> {
