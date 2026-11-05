@@ -28,15 +28,6 @@ enum ThreadStatus: String, Codable, CaseIterable {
         }
     }
 
-    /// The small status dot next to a thread's title.
-    var tint: Color {
-        switch self {
-        case .active: AppTheme.Colors.success
-        case .waiting: AppTheme.Colors.warning
-        case .sleeping, .done: AppTheme.Colors.tertiaryText
-        }
-    }
-
     var color: Color {
         switch self {
         case .active: .green

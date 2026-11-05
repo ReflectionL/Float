@@ -207,6 +207,17 @@ struct SectionLabel: View {
     }
 }
 
+extension ThreadStatus {
+    /// The small status dot next to a thread's title.
+    var tint: Color {
+        switch self {
+        case .active: AppTheme.Colors.success
+        case .waiting: AppTheme.Colors.warning
+        case .sleeping, .done: AppTheme.Colors.tertiaryText
+        }
+    }
+}
+
 /// Short dates in the workspace: "14:05" today, "昨天" yesterday, else "11月3日".
 enum ShortDate {
     static func day(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
