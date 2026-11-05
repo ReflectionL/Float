@@ -1,4 +1,4 @@
-# Float — 0.6.2
+# Float — 0.7.0
 
 原生 macOS 多线程工作区。0.5.1 更名为 Float，保留原应用标识、数据目录与 JSON 格式，原工作区继续加载。Swift + SwiftUI + SwiftData，macOS 15+，无第三方依赖。
 
