@@ -208,7 +208,7 @@ struct SectionLabel: View {
 }
 
 extension ThreadStatus {
-    /// The small status dot next to a thread's title.
+    /// The colour of the status icon under a thread's title.
     var tint: Color {
         switch self {
         case .active: AppTheme.Colors.success

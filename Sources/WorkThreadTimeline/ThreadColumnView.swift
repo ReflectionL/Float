@@ -95,7 +95,7 @@ struct ThreadColumnView: View {
                     .frame(width: AppTheme.ControlHeight.compact, height: AppTheme.ControlHeight.compact)
                 actionsMenu
             }
-            // A coloured dot, the status, and when the thread was last touched.
+            // The status icon, its name, and when the thread was last touched.
             HStack(spacing: AppTheme.Spacing.extraSmall) {
                 Menu {
                     ForEach(ThreadStatus.allCases, id: \.self) { status in
@@ -108,11 +108,10 @@ struct ThreadColumnView: View {
                         Text(thread.status.displayName)
                             .foregroundStyle(AppTheme.Colors.secondaryText)
                     } icon: {
-                        Image(systemName: "circle.fill")
+                        Image(systemName: thread.status.symbol)
                             .renderingMode(.original)
                             .symbolRenderingMode(.palette)
                             .foregroundStyle(thread.status.tint)
-                            .font(.system(size: 6))
                     }
                     .font(AppTheme.Typography.caption)
                 }
